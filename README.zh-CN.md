@@ -16,14 +16,9 @@
 
 ## 截图
 
-> _注：截图待补 — 见 `docs/screenshots/` 目录_
+整张仪表板一图全收 —— 顶部 KPI、Daily trend、by-model、Top 10 projects、Realtime，再到 **Patterns** 面板（用法画像 + KPI + ACF + 一天时段 + 一周分布 + 变化点检测 + Markov 3 态矩阵 + 工作流形状），底部是 model × project 明细表：
 
-| | |
-|---|---|
-| ![Dashboard 顶部](./docs/screenshots/01-dashboard.png) | ![Patterns 面板](./docs/screenshots/02-patterns.png) |
-| 主仪表板（KPI + 趋势 + by-model） | Patterns 面板（用法画像 + Markov 矩阵 + ACF）|
-| ![AI 解读](./docs/screenshots/03-ai-interpret.png) | ![自定义日期范围](./docs/screenshots/04-custom-range.png) |
-| AI 解读（内嵌渲染）| 自定义日期 + 桶大小 |
+![Dashboard](./docs/screenshots/01-dashboard.png)
 
 ---
 

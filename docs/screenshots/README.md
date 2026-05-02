@@ -1,24 +1,25 @@
 # Screenshots
 
-The README references 4 PNGs in this directory. Capture them yourself:
+The READMEs reference one full-page screenshot here:
 
-1. **`01-dashboard.png`** — Dashboard top
-   - Run `python3 ~/.claude/skills/token-usage/dashboard/server.py`
-   - Show: header, KPI cards (Total / Billing-equiv / USD / Last 1h rate), Daily trend chart, By-model + Top-10 projects
-   - macOS: Cmd + Shift + 4 → drag to capture window region
+- **`01-dashboard.png`** — full dashboard at 1440 × 3200, captured headless via `chrome-headless-shell`. Shows everything in one shot: header → KPIs → Daily trend → by-model → Top 10 projects → Realtime → Patterns panel (toolbar + 8 cards) → Detail table.
 
-2. **`02-patterns.png`** — Patterns panel
-   - Scroll down to the Patterns section
-   - Show: toolbar (window/bucket/apply/AI 解读), profile + KPI cards, ACF + hour-of-day + day-of-week + changepoint + Markov 3 + workflow
+To regenerate:
 
-3. **`03-ai-interpret.png`** — AI 解读 inline result
-   - Click "🤖 AI 解读" button, wait 30-90s
-   - Show: the rendered Markdown report with TL;DR / 关键发现 / 优化建议 sections, plus model+elapsed metadata
+```bash
+# 1. Make sure the dashboard is running
+python3 ~/.claude/skills/token-usage/dashboard/server.py --no-open --port 8787
 
-4. **`04-custom-range.png`** — Custom date range UI
-   - Switch the window selector to "自定义…"
-   - Show: from/to date pickers, bucket selector, apply button
+# 2. Find Chrome (or use ~/Library/Caches/ms-playwright/.../chrome-headless-shell)
+CHROME=$(find ~/Library/Caches/ms-playwright -name 'chrome-headless-shell' -perm +111 2>/dev/null | head -1)
+[ -z "$CHROME" ] && CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 
-Recommended: 1440 × 900 viewport, light or dark theme (your choice).
-
-Save with these exact filenames so the README links resolve.
+# 3. Capture
+TMPDIR=$(mktemp -d)
+"$CHROME" --headless --disable-gpu --hide-scrollbars \
+  --user-data-dir="$TMPDIR" \
+  --window-size=1440,3200 \
+  --virtual-time-budget=8000 \
+  --screenshot=01-dashboard.png \
+  http://127.0.0.1:8787/
+```

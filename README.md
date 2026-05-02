@@ -14,16 +14,11 @@ Zero dependencies (pure stdlib, no `numpy` / `pandas` / `chart.js` server-side).
 
 ---
 
-## Screenshots
+## Screenshot
 
-> _Screenshots coming — see `docs/screenshots/`_
+The full dashboard in one shot — KPIs at the top, daily trend, by-model, top-10 projects, realtime, then the **Patterns** panel (profile + KPIs + ACF + hour-of-day + day-of-week + change-point + Markov 3-state + workflow), and a model × project detail table at the bottom:
 
-| | |
-|---|---|
-| ![Dashboard top](./docs/screenshots/01-dashboard.png) | ![Patterns panel](./docs/screenshots/02-patterns.png) |
-| Main dashboard (KPIs + trend + by-model) | Patterns panel (profile + Markov + ACF) |
-| ![AI interpretation](./docs/screenshots/03-ai-interpret.png) | ![Custom date range](./docs/screenshots/04-custom-range.png) |
-| AI interpretation (rendered inline) | Custom date + bucket selector |
+![Dashboard](./docs/screenshots/01-dashboard.png)
 
 ---
 
