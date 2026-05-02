@@ -20,8 +20,9 @@
 |---|---|
 | ![主仪表板](./docs/screenshots/01-dashboard.png) | ![Patterns 面板](./docs/screenshots/02-patterns.png) |
 | **主仪表板** — KPI 卡、Daily trend、by-model、Top 10 projects、Realtime | **Patterns 面板** — 自动画像 + KPI + ACF + 一天时段 + 一周分布 + 变化点 + Markov 3 态 + 工作流形状 |
-| ![AI 解读](./docs/screenshots/03-ai-interpret.png) | ![自定义日期范围](./docs/screenshots/04-custom-range.png) |
-| **🤖 AI 解读** — Markdown 内嵌渲染（Sonnet 4.6，约 30 秒） | **自定义范围** — 任选起止日期 + 桶大小，点应用 |
+
+![AI 解读](./docs/screenshots/03-ai-interpret.png)
+**🤖 AI 解读** — 本地 `claude` CLI 生成的 Markdown 内嵌渲染（Sonnet 4.6，约 30 秒）
 
 ---
 

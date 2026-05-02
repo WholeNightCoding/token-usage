@@ -11,7 +11,7 @@
 //                             bun init -y && bun add puppeteer-core
 //   3. Run:                   bun run docs/screenshots/capture.ts
 //
-// Output: 4 PNGs in this directory (01-04).
+// Output: 3 PNGs in this directory (01-03).
 
 import puppeteer from 'puppeteer-core';
 
@@ -57,18 +57,6 @@ try {
   await page.evaluate((el: any) => el.scrollIntoView({ block: 'start' }), patterns);
   await new Promise(r => setTimeout(r, 400));
   await patterns.screenshot({ path: `${OUT}/02-patterns.png` });
-
-  // ------- 04: custom range UI (do this BEFORE 03 so we don't leave AI 解读 visible) -------
-  console.log('shot 04 (custom range UI)…');
-  await page.select('#patterns-range', 'custom');
-  await page.waitForSelector('#patterns-custom-range:not([hidden])', { timeout: 5000 });
-  await new Promise(r => setTimeout(r, 300));
-  const toolbar = await page.$('.patterns-toolbar');
-  if (!toolbar) throw new Error('.patterns-toolbar not found');
-  await toolbar.screenshot({ path: `${OUT}/04-custom-range.png` });
-  // restore default selector for the next shot
-  await page.select('#patterns-range', '7d');
-  await page.waitForSelector('#patterns-custom-range[hidden]', { timeout: 5000 });
 
   // ------- 03: AI 解读 — click button, wait for the spinner placeholder to vanish -------
   console.log('shot 03 (AI 解读, may take 30-90s)…');
