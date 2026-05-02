@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en" data-theme="apple">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Claude Code Token Usage</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Geist:wght@300..700&family=Geist+Mono:wght@300..600&family=JetBrains+Mono:wght@300..600&family=Roboto+Flex:opsz,wght@8..144,300..700&family=Roboto+Mono:wght@300..600&display=swap"
+    rel="stylesheet" />
+  <link rel="stylesheet" href="/styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <header>
+    <h1>Claude Code Token Usage</h1>
+    <div class="controls">
+      <span id="loading" class="loading" hidden>⏳ 加载中…</span>
+      <span id="updated-at" class="updated-at"></span>
+      <label class="theme-label">Theme:
+        <select id="theme">
+          <option value="apple" selected>Apple</option>
+          <option value="material">Material You</option>
+          <option value="linear">Linear</option>
+          <option value="terminal">Terminal</option>
+        </select>
+      </label>
+      <label>Refresh:
+        <select id="interval">
+          <option value="0">Off</option>
+          <option value="10">10s</option>
+          <option value="30" selected>30s</option>
+          <option value="60">1m</option>
+          <option value="300">5m</option>
+          <option value="600">10m</option>
+        </select>
+      </label>
+      <button id="refresh">⟳ refresh</button>
+    </div>
+  </header>
+
+  <nav id="ranges">
+    <button data-range="today">Today</button>
+    <button data-range="yesterday">Yesterday</button>
+    <button data-range="this-week" class="active">This week</button>
+    <button data-range="this-month">This month</button>
+    <button data-range="7d">7d</button>
+    <button data-range="30d">30d</button>
+  </nav>
+
+  <section class="cards">
+    <div class="card"><div class="label">Total</div><div class="value" id="card-total">—</div></div>
+    <div class="card"><div class="label">Billing-equiv</div><div class="value" id="card-billing">—</div></div>
+    <div class="card" id="card-usd-wrap"><div class="label">Est $ (pay-as-you-go)</div><div class="value" id="card-usd">—</div><div class="hint">Hide if on Max/Team plan</div></div>
+    <div class="card"><div class="label">Last 1h rate</div><div class="value" id="card-rate">—</div><div class="hint">tokens / min</div></div>
+  </section>
+
+  <section class="panel">
+    <h2>Daily trend</h2>
+    <div class="chart-box"><canvas id="chart-daily"></canvas></div>
+  </section>
+
+  <section class="row">
+    <div class="panel half">
+      <h2>By model</h2>
+      <div class="chart-box small"><canvas id="chart-model"></canvas></div>
+    </div>
+    <div class="panel half">
+      <h2>Top 10 projects</h2>
+      <div class="chart-box small"><canvas id="chart-project"></canvas></div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Realtime <small id="realtime-range-label" class="muted">— last 1h, 1 min buckets (auto 10s)</small></h2>
+    <div class="rt-toolbar">
+      <label>Bucket:
+        <select id="realtime-interval">
+          <option value="60"    selected>1 min</option>
+          <option value="120">2 min</option>
+          <option value="300">5 min</option>
+          <option value="600">10 min</option>
+          <option value="900">15 min</option>
+          <option value="1800">30 min</option>
+          <option value="3600">1 hour</option>
+          <option value="7200">2 hour</option>
+          <option value="14400">4 hour</option>
+        </select>
+      </label>
+    </div>
+    <div class="chart-box"><canvas id="chart-realtime"></canvas></div>
+  </section>
+
+  <section class="panel" id="patterns-panel">
+    <div class="panel-head">
+      <h2>Patterns <small class="muted" id="patterns-summary-label">— 7 天 30min</small></h2>
+      <button id="export-patterns-html" class="export-btn" title="下载当前 patterns 数据 (JSON)">导出 JSON</button>
+    </div>
+
+    <div class="patterns-toolbar">
+      <label>窗口:
+        <select id="patterns-range">
+          <option value="3d">过去 3 天</option>
+          <option value="7d" selected>过去 7 天</option>
+          <option value="14d">过去 14 天</option>
+          <option value="30d">过去 30 天</option>
+          <option value="60d">过去 60 天</option>
+          <option value="90d">过去 90 天</option>
+          <option value="custom">自定义…</option>
+        </select>
+      </label>
+      <span class="custom-range" id="patterns-custom-range" hidden>
+        <input type="date" id="patterns-from" />
+        <span>—</span>
+        <input type="date" id="patterns-to" />
+      </span>
+      <label>桶:
+        <select id="patterns-bucket">
+          <option value="900">15 min</option>
+          <option value="1800" selected>30 min</option>
+          <option value="3600">1 hour</option>
+          <option value="7200">2 hour</option>
+          <option value="14400">4 hour</option>
+          <option value="21600">6 hour</option>
+          <option value="43200">12 hour</option>
+          <option value="86400">1 day</option>
+        </select>
+      </label>
+      <button id="patterns-apply" class="export-btn">应用</button>
+      <button id="patterns-interpret" class="interpret-btn" title="用本地 claude CLI 生成报告解读">🤖 AI 解读</button>
+      <span id="patterns-error" class="patterns-error" hidden></span>
+    </div>
+
+    <div class="patterns-grid">
+      <div class="pat-card profile-card">
+        <div class="pat-card-title">用法画像<span class="help"><span class="help-icon" tabindex="0">?</span><span class="help-tip"><strong>用法画像</strong>根据下面 6 个信号自动给你贴标签：<br>• <b>晚高峰</b>：18-21 点是峰值小时<br>• <b>突发型</b>：Burstiness B &gt; 0.15<br>• <b>强 24h 周期</b>：lag-12h ACF &lt; -0.1 或 lag-24h &gt; 0.1<br>• <b>无周周期</b>：lag-7d ACF 接近 0<br>• <b>高黏性</b>：Stickiness &gt; 0.3<br>• <b>High 沉浸</b>：P(H→H) &gt; P(L→L)</span></span></div>
+        <div id="profile-summary" class="profile-summary muted">—</div>
+        <ul id="profile-bullets" class="profile-bullets"></ul>
+      </div>
+
+      <div class="pat-card kpi-card">
+        <div class="pat-card-title">KPI</div>
+        <div class="kpi-grid">
+          <div class="kpi"><div class="kpi-num" id="kpi-gini">—</div><div class="kpi-label">Gini<span class="help"><span class="help-icon" tabindex="0">?</span><span class="help-tip"><strong>Gini 系数</strong>来自经济学，衡量不平等/集中度。<br>0 = 完全平均（每桶用量一样）<br>1 = 极度集中（一个桶占了全部）<br><br>你的 token 用量 Gini &gt; 0.7 比中国收入差距还大，意味着 <b>top 5% 的桶承担了近 30% 的总量</b>。</span></span></div><div class="kpi-sub">集中度（越高越集中）</div></div>
+          <div class="kpi"><div class="kpi-num" id="kpi-burst">—</div><div class="kpi-label">Burstiness B<span class="help"><span class="help-icon" tabindex="0">?</span><span class="help-tip"><strong>Goh-Barabási 突发指数</strong>来自复杂网络，比较你的用量分布和泊松分布的差距。<br>范围 [−1, +1]：<br>• <b>+1</b>：极端突发（少数大爆发 + 大量空闲）<br>• <b>0</b>：泊松分布（事件随机均匀）<br>• <b>−1</b>：完全均匀<br><br>B &gt; 0.15 算"明显突发"。你的值反映"忙起来很集中"。</span></span></div><div class="kpi-sub">+1 极端突发，0 泊松</div></div>
+          <div class="kpi"><div class="kpi-num" id="kpi-top5">—</div><div class="kpi-label">top 5%<span class="help"><span class="help-icon" tabindex="0">?</span><span class="help-tip"><strong>top 5% 集中度</strong>来自 Pareto 分析。<br>把所有 30 分钟桶按 token 数从高到低排序，取最高的 5%（约 17 个桶），算它们贡献了总量的多少百分比。<br><br>≥ 25% 即为<b>重尾分布</b>。意味着省钱杠杆全在这 17 个高峰桶上。</span></span></div><div class="kpi-sub">前 5% 桶占的份额</div></div>
+          <div class="kpi"><div class="kpi-num" id="kpi-stick">—</div><div class="kpi-label">Stickiness<span class="help"><span class="help-icon" tabindex="0">?</span><span class="help-tip"><strong>黏性指数</strong>= P(活跃→活跃) − π(活跃)。<br>衡量"活跃后继续活跃的概率"比"长期平均活跃率"高出多少。<br><br>• <b>0</b>：状态切换完全随机<br>• <b>+0.3</b>：用起来停不下来<br>• <b>+0.5+</b>：极强惯性<br><br>反映 Markov 链的"自留倾向"。</span></span></div><div class="kpi-sub">活跃后继续活跃的额外概率</div></div>
+        </div>
+      </div>
+
+      <div class="pat-card">
+        <div class="pat-card-title">自相关 (ACF)<span class="help"><span class="help-icon" tabindex="0">?</span><span class="help-tip"><strong>Autocorrelation Function</strong>测量"当前桶"与"N 桶之前的桶"有多相似。<br><br>怎么读：<br>• <b>短 lag 高（如 lag-30min）</b> = 强持续性，下个 30 分钟还会用<br>• <b>lag-12h 负相关</b> = 反相，典型的"白天 vs 黑夜"<br>• <b>lag-24h 正相关</b> = 日周期<br>• <b>lag-7d ≈ 0</b> = 没有周周期<br><br>范围 [−1, +1]，越接近 0 越独立。</span></span></div>
+        <div id="chart-acf" class="bar-stack"></div>
+      </div>
+
+      <div class="pat-card">
+        <div class="pat-card-title">一天时段画像 <span class="muted">(local tz)</span></div>
+        <div id="chart-hour" class="bar-stack bar-stack-dense"></div>
+      </div>
+
+      <div class="pat-card">
+        <div class="pat-card-title">一周分布</div>
+        <div id="chart-dow" class="bar-stack"></div>
+      </div>
+
+      <div class="pat-card">
+        <div class="pat-card-title">变化点检测 <span class="muted">(30天)</span><span class="help"><span class="help-icon" tabindex="0">?</span><span class="help-tip"><strong>Change-point detection</strong> 找时间序列中"前后均值显著不同"的拐点。<br><br>方法：<b>binary segmentation + BIC penalty</b>。在每个候选位置切一刀，比较"切了之后 SSE 减少多少" vs "BIC 惩罚阈值"。超过阈值才接受。<br><br>典型用途：检测"哪天起开始重度使用"。</span></span></div>
+        <div class="chart-box small"><canvas id="chart-cp"></canvas></div>
+        <div id="cp-annotations" class="cp-annotations muted"></div>
+      </div>
+
+      <div class="pat-card markov-3-card">
+        <div class="pat-card-title">Markov 3态矩阵<span class="help"><span class="help-icon" tabindex="0">?</span><span class="help-tip"><strong>状态转移矩阵</strong> P[from][to]：行=当前状态，列=下个 30 分钟的状态，值=条件概率。<br><br><b>三个状态</b>：<br>• <b>I</b> = Idle（0 token）<br>• <b>L</b> = Low（&lt;阈值）<br>• <b>H</b> = High（≥阈值，阈值默认是活跃桶中位数）<br><br><b>对角线</b>（自留概率）越高越"沉浸"。<br><br>每行加起来 = 1.00。</span></span></div>
+        <table class="markov-table" id="markov-3">
+          <thead>
+            <tr><th></th><th>→ I</th><th>→ L</th><th>→ H</th></tr>
+          </thead>
+          <tbody>
+            <tr><th>I</th><td class="num self">—</td><td class="num">—</td><td class="num">—</td></tr>
+            <tr><th>L</th><td class="num">—</td><td class="num self">—</td><td class="num">—</td></tr>
+            <tr><th>H</th><td class="num">—</td><td class="num">—</td><td class="num self">—</td></tr>
+          </tbody>
+        </table>
+        <div class="markov-meta" id="markov-meta"></div>
+      </div>
+
+      <div class="pat-card workflow-card">
+        <div class="pat-card-title">工作流形状<span class="help tip-right"><span class="help-icon" tabindex="0">?</span><span class="help-tip"><strong>5 个推断出的模式</strong>，全部从 Markov 矩阵的概率推断：<br>• <b>升档难</b>：P[I→H] 很小 = 启动很少猛干<br>• <b>收工慢</b>：P[H→I] 很小 = 高强度极少直接收工<br>• <b>沉浸度</b>：P[H→H] vs P[L→L] 谁大谁更黏<br>• <b>升降对称性</b>：|P[L→H] − P[H→L]|<br>• <b>Idle 黏性</b>：P[I→I] + 平均停留时间</span></span></div>
+        <pre class="arrow-flow" id="workflow-shape">—</pre>
+        <ol id="workflow-patterns" class="workflow-patterns"></ol>
+      </div>
+    </div>
+
+    <section class="interpret-section" id="interpret-section" hidden>
+      <div class="interpret-head">
+        <h3>🤖 AI 解读</h3>
+        <span class="interpret-meta muted" id="interpret-meta"></span>
+        <span class="interpret-actions">
+          <button id="interpret-regen" class="export-btn" hidden>重新生成</button>
+          <button id="interpret-copy" class="export-btn" hidden>复制 Markdown</button>
+          <button id="interpret-dismiss" class="export-btn" title="清除解读" hidden>清除</button>
+        </span>
+      </div>
+      <div class="interpret-body" id="interpret-body"></div>
+    </section>
+  </section>
+
+  <section class="panel">
+    <h2>Detail — model × project</h2>
+    <div class="detail-toolbar">
+      <label>Group by:
+        <select id="detail-group">
+          <option value="none">None</option>
+          <option value="model">Model</option>
+          <option value="project">Project</option>
+        </select>
+      </label>
+      <input type="search" id="detail-filter" placeholder="filter by model or project…" />
+      <span id="detail-count" class="detail-count"></span>
+    </div>
+    <table id="detail"><thead><tr>
+      <th data-sort="model">Model</th>
+      <th data-sort="project">Project</th>
+      <th data-sort="count">Msgs</th>
+      <th data-sort="in">Input</th>
+      <th data-sort="out">Output</th>
+      <th data-sort="cr">Cache read</th>
+      <th data-sort="cc">Cache create</th>
+      <th data-sort="total" class="sorted">Total</th>
+    </tr></thead><tbody></tbody></table>
+  </section>
+
+  <script src="/app.js"></script>
+</body>
+</html>
