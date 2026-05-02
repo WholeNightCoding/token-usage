@@ -31,3 +31,4 @@ dashboard/PLAN.md
 *.local.*
 out/
 tmp/
+.gstack/

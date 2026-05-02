@@ -2,6 +2,8 @@
 
 > Local-first analytics for your Claude Code token consumption.
 
+**English** · [简体中文](./README.zh-CN.md)
+
 A [Claude Code](https://claude.com/claude-code) skill that reads JSONL transcripts under `~/.claude/projects/`, aggregates per model / project / day, and surfaces patterns and AI-generated interpretations through three interfaces:
 
 - **CLI** — `count_tokens.py` for one-shot reports in any time range
@@ -9,6 +11,19 @@ A [Claude Code](https://claude.com/claude-code) skill that reads JSONL transcrip
 - **`analyze.py` CLI** — exports the same Patterns analysis to standalone HTML / Markdown / JSON
 
 Zero dependencies (pure stdlib, no `numpy` / `pandas` / `chart.js` server-side). Chart.js is loaded from CDN by the browser only.
+
+---
+
+## Screenshots
+
+> _Screenshots coming — see `docs/screenshots/`_
+
+| | |
+|---|---|
+| ![Dashboard top](./docs/screenshots/01-dashboard.png) | ![Patterns panel](./docs/screenshots/02-patterns.png) |
+| Main dashboard (KPIs + trend + by-model) | Patterns panel (profile + Markov + ACF) |
+| ![AI interpretation](./docs/screenshots/03-ai-interpret.png) | ![Custom date range](./docs/screenshots/04-custom-range.png) |
+| AI interpretation (rendered inline) | Custom date + bucket selector |
 
 ---
 
@@ -190,6 +205,19 @@ Everything comes from `~/.claude/projects/**/*.jsonl` — the JSONL transcripts 
 
 ---
 
+## For Claude Code contributors
+
+If you open this repo in Claude Code, [`CLAUDE.md`](./CLAUDE.md) is auto-loaded into Claude's context. It tells Claude Code:
+
+- the codebase map (where each module lives + what it does)
+- hard rules (zero pip deps, no telemetry, don't mutate user transcripts, Chinese UI strings stay Chinese, etc.)
+- common dev tasks (run dashboard, add a new statistical method, edit the AI prompt)
+- battle scars from prior work (org slug PascalCase, LLM call timeout, dedup-by-max for streaming snapshots, etc.)
+
+This file is the convention every Claude Code project should ship with — it makes Claude Code's first edit on the repo dramatically more accurate.
+
+---
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
@@ -198,4 +226,4 @@ MIT — see [LICENSE](LICENSE).
 
 ## Contributing
 
-Issues and PRs welcome. The codebase is intentionally small (pure stdlib, ~3500 lines total) so extension is easy.
+Issues and PRs welcome. The codebase is intentionally small (pure stdlib, ~3500 lines total) so extension is easy. See [CLAUDE.md](./CLAUDE.md) for conventions.
