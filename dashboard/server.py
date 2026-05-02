@@ -36,6 +36,11 @@ _FAR_FUTURE = datetime(9999, 1, 1, tzinfo=timezone.utc)
 
 _records_lock = threading.Lock()
 _records_cache: dict = {"signature": None, "records": []}
+# Separate lock so concurrent cold-cache callers don't all rescan in parallel
+# (thundering herd). With the GIL, parallel scan_records calls serialize anyway
+# but waste CPU repeating the same work — the page issues 3 fetches at once on
+# load, which without single-flight took ~57s to render vs ~6s warm.
+_scan_lock = threading.Lock()
 
 # Per-range result cache — avoids re-aggregating when the user clicks back
 # to a range they just viewed. Keyed by (corpus_signature, range_key), so
@@ -60,14 +65,21 @@ def _corpus_signature():
 def get_all_records():
     """Return the full record list, scanning disk only when files change."""
     sig = _corpus_signature()
+    # Fast path: cache hit, no scan needed.
     with _records_lock:
         if _records_cache["signature"] == sig:
             return _records_cache["records"]
-    records = ts.scan_records(_EPOCH, _FAR_FUTURE)
-    with _records_lock:
-        _records_cache["records"] = records
-        _records_cache["signature"] = sig
-    return records
+    # Cache miss: serialize on _scan_lock so only one thread scans; others
+    # wait, then see the populated cache via the inner re-check.
+    with _scan_lock:
+        with _records_lock:
+            if _records_cache["signature"] == sig:
+                return _records_cache["records"]
+        records = ts.scan_records(_EPOCH, _FAR_FUTURE)
+        with _records_lock:
+            _records_cache["records"] = records
+            _records_cache["signature"] = sig
+        return records
 
 
 def _range_cache_key(q: dict):
