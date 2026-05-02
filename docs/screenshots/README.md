@@ -1,25 +1,38 @@
 # Screenshots
 
-The READMEs reference one full-page screenshot here:
+The READMEs reference 4 PNGs in this directory:
 
-- **`01-dashboard.png`** — full dashboard at 1440 × 3200, captured headless via `chrome-headless-shell`. Shows everything in one shot: header → KPIs → Daily trend → by-model → Top 10 projects → Realtime → Patterns panel (toolbar + 8 cards) → Detail table.
+| File | What it captures | How |
+|---|---|---|
+| `01-dashboard.png` | Dashboard top: KPIs, Daily trend, by-model, Top-10 projects, Realtime | full-page, clipped to the top of `#patterns-panel` |
+| `02-patterns.png` | Patterns panel (toolbar + 8 cards) | element-bound (`#patterns-panel.screenshot()`) |
+| `03-ai-interpret.png` | AI 解读 inline result | clicks the button, waits for the LLM, screenshots `#interpret-section` |
+| `04-custom-range.png` | Custom range toolbar (window+from+to+bucket+apply+AI 解读) | switches `#patterns-range` to `custom`, screenshots `.patterns-toolbar` |
 
-To regenerate:
+All four are captured by `capture.ts` in this directory. Element-bound shots (02-04) use puppeteer-core's `ElementHandle.screenshot()` so they crop exactly to the DOM rect — no manual coordinates needed.
+
+## Regenerating
 
 ```bash
-# 1. Make sure the dashboard is running
+# 1. Start the dashboard
 python3 ~/.claude/skills/token-usage/dashboard/server.py --no-open --port 8787
 
-# 2. Find Chrome (or use ~/Library/Caches/ms-playwright/.../chrome-headless-shell)
-CHROME=$(find ~/Library/Caches/ms-playwright -name 'chrome-headless-shell' -perm +111 2>/dev/null | head -1)
-[ -z "$CHROME" ] && CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+# 2. One-time deps install (uses Bun, ~10s; chromium is the one
+#    already cached at ~/Library/Caches/ms-playwright/.../chrome-headless-shell)
+mkdir -p /tmp/shot && cd /tmp/shot
+bun init -y
+bun add puppeteer-core
 
-# 3. Capture
-TMPDIR=$(mktemp -d)
-"$CHROME" --headless --disable-gpu --hide-scrollbars \
-  --user-data-dir="$TMPDIR" \
-  --window-size=1440,3200 \
-  --virtual-time-budget=8000 \
-  --screenshot=01-dashboard.png \
-  http://127.0.0.1:8787/
+# 3. Run the capture script (~90s — 80s of which is the LLM call for shot 03)
+bun run ~/.claude/skills/token-usage/docs/screenshots/capture.ts
 ```
+
+Override the chromium path or URL with env vars:
+
+```bash
+CHROME=/path/to/chrome URL=http://127.0.0.1:9000/ bun run capture.ts
+```
+
+## Why not the gstack `browse` skill
+
+`browse` has a `screenshot --selector` flag which is the obvious tool for this job. But its daemon (a bun + playwright service) was hanging on every command in our environment, so we bypassed it and drove `chrome-headless-shell` directly via `puppeteer-core`. This script is ~80 lines, has no daemon, runs to completion in one shot, and uses the chromium binary that gstack/playwright already downloaded — no extra disk cost.

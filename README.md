@@ -14,11 +14,14 @@ Zero dependencies (pure stdlib, no `numpy` / `pandas` / `chart.js` server-side).
 
 ---
 
-## Screenshot
+## Screenshots
 
-The full dashboard in one shot — KPIs at the top, daily trend, by-model, top-10 projects, realtime, then the **Patterns** panel (profile + KPIs + ACF + hour-of-day + day-of-week + change-point + Markov 3-state + workflow), and a model × project detail table at the bottom:
-
-![Dashboard](./docs/screenshots/01-dashboard.png)
+| | |
+|---|---|
+| ![Dashboard top](./docs/screenshots/01-dashboard.png) | ![Patterns panel](./docs/screenshots/02-patterns.png) |
+| **Main dashboard** — KPIs, daily trend, by-model, top-10 projects, realtime | **Patterns panel** — auto profile + KPIs + ACF + hour-of-day + day-of-week + change-point + Markov 3-state + workflow |
+| ![AI interpretation](./docs/screenshots/03-ai-interpret.png) | ![Custom date range](./docs/screenshots/04-custom-range.png) |
+| **🤖 AI 解读** — Markdown report rendered inline (Sonnet 4.6, ~30s) | **Custom range toolbar** — pick a `from`/`to` date, choose any bucket size, hit apply |
 
 ---
 
