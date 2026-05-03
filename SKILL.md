@@ -65,6 +65,8 @@ Output columns: `MODEL | MSGS | INPUT | OUTPUT | CACHE_READ | CACHE_CREATE | TOT
 
 ## Reading the output
 
+- **Scope**: covers Claude Code only. Anthropic API direct calls, Claude.ai web/desktop usage are NOT in these transcripts — totals will be lower than your actual Anthropic billing.
+- **Sub-agent dedup is automatic**: same `message.id` appearing in parent + sub-agent transcripts is merged via field-wise max. The numbers you see are post-dedup; no double-counting.
 - `<synthetic>` model rows are cache-only compaction events; always sum to zero, safe to ignore.
 - `cache_create_5m` is priced at 1.25× input, `cache_create_1h` at 2×; billing-equiv splits them via `cache_creation.ephemeral_1h_input_tokens` per record.
 
