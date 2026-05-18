@@ -1,14 +1,15 @@
 # Screenshots
 
-The READMEs reference 3 PNGs in this directory:
+The READMEs reference 4 PNGs in this directory:
 
 | File | What it captures | How |
 |---|---|---|
 | `01-dashboard.png` | Dashboard top: KPIs, Daily trend, by-model, Top-10 projects, Realtime | full-page, clipped to the top of `#patterns-panel` |
 | `02-patterns.png` | Patterns panel (toolbar + 8 cards) | element-bound (`#patterns-panel.screenshot()`) |
 | `03-ai-interpret.png` | AI 解读 inline result | clicks the button, waits for the LLM, screenshots `#interpret-section` |
+| `04-efficiency.png` | Work-efficiency panel: KPIs + CDF + KDE + per-day table (30-day window) | clicks `[data-range="30d"]`, then element-bound `#efficiency-panel.screenshot()` |
 
-All three are captured by `capture.ts` in this directory. Element-bound shots (02-03) use puppeteer-core's `ElementHandle.screenshot()` so they crop exactly to the DOM rect — no manual coordinates needed.
+All four are captured by `capture.ts` in this directory. Element-bound shots (02-04) use puppeteer-core's `ElementHandle.screenshot()` so they crop exactly to the DOM rect — no manual coordinates needed.
 
 ## Regenerating
 

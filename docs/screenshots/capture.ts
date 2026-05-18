@@ -11,7 +11,7 @@
 //                             bun init -y && bun add puppeteer-core
 //   3. Run:                   bun run docs/screenshots/capture.ts
 //
-// Output: 3 PNGs in this directory (01-03).
+// Output: 4 PNGs in this directory (01-04).
 
 import puppeteer from 'puppeteer-core';
 
@@ -57,6 +57,20 @@ try {
   await page.evaluate((el: any) => el.scrollIntoView({ block: 'start' }), patterns);
   await new Promise(r => setTimeout(r, 400));
   await patterns.screenshot({ path: `${OUT}/02-patterns.png` });
+
+  // ------- 04: work-efficiency panel (after switching to 30d) -------
+  // 04 before 03 because the AI 解读 call takes 30-90s; doing the cheap shots
+  // first means a failure on 03 doesn't cost us 04.
+  console.log('shot 04 (work-efficiency, 30d)…');
+  // Range nav: switch the whole dashboard to 30d so the panel has a meaningful sample.
+  // Native DOM .click() — page.click() doesn't always fire the bound listener.
+  await page.evaluate(() => (document.querySelector('[data-range="30d"]') as HTMLElement)?.click());
+  await new Promise(r => setTimeout(r, 3500));
+  const effPanel = await page.$('#efficiency-panel');
+  if (!effPanel) throw new Error('#efficiency-panel not found');
+  await page.evaluate((el: any) => el.scrollIntoView({ block: 'start' }), effPanel);
+  await new Promise(r => setTimeout(r, 400));
+  await effPanel.screenshot({ path: `${OUT}/04-efficiency.png` });
 
   // ------- 03: AI 解读 — click button, wait for the spinner placeholder to vanish -------
   console.log('shot 03 (AI 解读, may take 30-90s)…');

@@ -4,11 +4,12 @@
 
 [English](./README.md) · 简体中文
 
-一个 [Claude Code](https://claude.com/claude-code) skill —— 直接读 `~/.claude/projects/` 下的 JSONL transcript，按 model / project / day 聚合，并通过三个界面把数据变成可读的洞察：
+一个 [Claude Code](https://claude.com/claude-code) skill —— 直接读 `~/.claude/projects/` 下的 JSONL transcript，按 model / project / day 聚合，并通过四个界面把数据变成可读的洞察：
 
 - **CLI** — `count_tokens.py` 任意时间区间一次性出报告
-- **浏览器仪表板** — 图表 + Patterns 面板（Markov / ACF / 变化点检测）+ 内嵌 **🤖 AI 解读** 按钮
-- **`analyze.py` CLI** — 把同样的 Patterns 分析导出成独立 HTML / Markdown / JSON
+- **浏览器仪表板** — 图表 + **工作效率面板**（按活跃分钟算吞吐 + CDF/KDE 分布图）+ **Patterns 面板**（Markov / ACF / 变化点检测）+ 内嵌 **🤖 AI 解读** 按钮
+- **`analyze.py` CLI** — 把 Patterns 分析导出成独立 HTML / Markdown / JSON
+- **`work_efficiency.py` CLI** — 同样的活跃分钟吞吐分析，纯终端输出
 
 零 pip 依赖（纯 stdlib，连 numpy/pandas 都没有）。Chart.js 只在浏览器端通过 CDN 加载。
 
@@ -20,6 +21,9 @@
 |---|---|
 | ![主仪表板](./docs/screenshots/01-dashboard.png) | ![Patterns 面板](./docs/screenshots/02-patterns.png) |
 | **主仪表板** — KPI 卡、Daily trend、by-model、Top 10 projects、Realtime | **Patterns 面板** — 自动画像 + KPI + ACF + 一天时段 + 一周分布 + 变化点 + Markov 3 态 + 工作流形状 |
+
+![工作效率面板](./docs/screenshots/04-efficiency.png)
+**工作效率面板** — 活跃时长 vs wall-clock、按活跃分钟算的吞吐速率（30 分钟槽位速率的 CDF + KDE 分布图）、每日明细。**20 分钟工作只除以 20 分钟，不除以 60**，速率反映你真在敲键盘时的节奏，不被两头摸鱼时间稀释。`raw / billing-equiv` 切换会同步重画两张图。
 
 ![AI 解读](./docs/screenshots/03-ai-interpret.png)
 **🤖 AI 解读** — 本地 `claude` CLI 生成的 Markdown 内嵌渲染（Sonnet 4.6，约 30 秒）
@@ -100,8 +104,34 @@ python3 ~/.claude/skills/token-usage/dashboard/server.py
 - **Daily trend** — 按 model 堆叠的柱状图，柱顶标总计
 - **By model / Top 10 projects** — 甜甜圈 + 柱状
 - **Realtime** — 最近 N 小时折线图，每 10 秒自动刷新，桶大小可选（1 min → 4 hour）
+- **工作效率面板** — 见下
 - **Patterns 面板** — 见下
 - **Detail 表** — 可过滤的 model × project 行
+
+### 工作效率面板
+
+跟 Patterns 面板答的是两个不同的问题：**"我真在敲键盘的时候，吞吐到底有多快？"**。Wall-clock 平均会糊掉这点——如果你工作 20 分钟、idle 40 分钟，token 除以 60 看起来就像慢吞吞的一小时。这个面板除以 20。
+
+- **4 张 KPI 卡** — 活跃时长、占 wall-clock 比例、活跃时段 raw 吞吐、活跃时段 billing-equiv 吞吐
+- **CDF 图** — 30 分钟槽位速率的经验累积分布（x = tokens/hour，y = `P(speed ≤ x)`）。**y 轴直接读分位数**：找 50% 对应的 x 就是中位速率
+- **KDE 图** — 同一组速率的高斯核密度估计（Silverman 带宽 + IQR fallback，归一化到峰值 = 1）。**读形状**：单峰 vs 双峰、瘦钟形 vs 长尾
+- **每日明细表** — 日期 / 活跃时长 / token / billing / 活跃时速率，最高速率的天高亮
+- **`raw / billing-equiv` 切换**（面板级）—— 两张图同步换坐标轴。`raw` 数所有 input/output/cache token；`billing-equiv` 按 Anthropic 计价权重折算（cache_read × 0.1，cache_create_5m × 1.25，cache_create_1h × 2，output × 5），x 轴跟实际花费成正比
+
+最小聚合粒度是 30 分钟槽 —— 一个槽的速率 = `槽内 token / 槽内活跃分钟数 × 60`。**活跃分钟** = 任意分钟有 token 消耗。**活跃槽** = 至少含 1 个活跃分钟的 30 分钟槽。
+
+同一份分析也支持纯终端：
+
+```bash
+python3 ~/.claude/skills/token-usage/scripts/work_efficiency.py 30   # 最近 30 天
+python3 ~/.claude/skills/token-usage/scripts/work_efficiency.py 7    # 最近 7 天
+```
+
+仪表板背后的接口：
+```bash
+GET /api/efficiency?range=30d
+GET /api/efficiency?from=2026-04-01&to=2026-04-30
+```
 
 ### Patterns 面板
 
@@ -184,7 +214,8 @@ token-usage/
 ├── scripts/
 │   ├── token_stats.py             核心：解析 / 去重 / 聚合 transcript
 │   ├── count_tokens.py            CLI：时间范围内 token 计数
-│   └── analyze.py                 CLI：Patterns 分析 + 报告导出
+│   ├── analyze.py                 CLI：Patterns 分析 + 报告导出
+│   └── work_efficiency.py         库 + CLI：按活跃分钟算吞吐 + CDF/KDE 数据源
 ├── analysis/                       纯 Python 分析模块（无依赖）
 │   ├── features.py                描述 / 突发 / Gini / ACF / runs / 熵
 │   ├── seasonal.py                Hour-of-day, day-of-week

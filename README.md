@@ -4,11 +4,12 @@
 
 **English** · [简体中文](./README.zh-CN.md)
 
-A [Claude Code](https://claude.com/claude-code) skill that reads JSONL transcripts under `~/.claude/projects/`, aggregates per model / project / day, and surfaces patterns and AI-generated interpretations through three interfaces:
+A [Claude Code](https://claude.com/claude-code) skill that reads JSONL transcripts under `~/.claude/projects/`, aggregates per model / project / day, and surfaces patterns and AI-generated interpretations through four interfaces:
 
 - **CLI** — `count_tokens.py` for one-shot reports in any time range
-- **Browser dashboard** — charts + a Patterns panel (Markov / ACF / change-point) + an in-page **🤖 AI 解读** button
-- **`analyze.py` CLI** — exports the same Patterns analysis to standalone HTML / Markdown / JSON
+- **Browser dashboard** — charts + a **Work-efficiency panel** (throughput per active minute, CDF + KDE) + a **Patterns panel** (Markov / ACF / change-point) + an in-page **🤖 AI 解读** button
+- **`analyze.py` CLI** — exports the Patterns analysis to standalone HTML / Markdown / JSON
+- **`work_efficiency.py` CLI** — same active-minute throughput analysis in the terminal
 
 Zero dependencies (pure stdlib, no `numpy` / `pandas` / `chart.js` server-side). Chart.js is loaded from CDN by the browser only.
 
@@ -20,6 +21,9 @@ Zero dependencies (pure stdlib, no `numpy` / `pandas` / `chart.js` server-side).
 |---|---|
 | ![Dashboard top](./docs/screenshots/01-dashboard.png) | ![Patterns panel](./docs/screenshots/02-patterns.png) |
 | **Main dashboard** — KPIs, daily trend, by-model, top-10 projects, realtime | **Patterns panel** — auto profile + KPIs + ACF + hour-of-day + day-of-week + change-point + Markov 3-state + workflow |
+
+![Work-efficiency panel](./docs/screenshots/04-efficiency.png)
+**Work-efficiency panel** — active hours vs wall-clock, throughput-per-active-minute (CDF + KDE distribution charts of 30-min slot rates), per-day breakdown. A 20-minute work block is divided by 20 min, not 60 — so the rate reflects how fast you actually work, not how much idle time bookends it. Toggle `raw / billing-equiv` re-scales both charts.
 
 ![AI interpretation](./docs/screenshots/03-ai-interpret.png)
 **🤖 AI 解读** — Markdown report rendered inline by the local `claude` CLI (Sonnet 4.6, ~30s)
@@ -100,8 +104,34 @@ What you get:
 - **Daily trend** — stacked bar chart by model, with totals labeled
 - **By model / Top 10 projects** — doughnut + bar
 - **Realtime** — last-Nh line chart, auto-refreshes every 10s, configurable bucket size (1 min → 4 hour)
+- **Work-efficiency panel** — see below
 - **Patterns panel** — see below
 - **Detail table** — filterable model × project rows
+
+### Work-efficiency panel
+
+Answers a different question than the Patterns panel: **how productive are you during the hours you're actually at the keyboard?** Wall-clock averages hide this — if you work 20 minutes and idle for 40, dividing tokens by 60 reads as a slow hour. This panel divides by 20.
+
+- **4 KPI cards** — active hours, % of wall-clock, raw throughput per active hour, billing-equiv throughput per active hour
+- **CDF chart** — empirical cumulative distribution of per-30-min-slot rates (x = tokens/hour, y = `P(rate ≤ x)`). Read percentiles directly off the y axis.
+- **KDE chart** — Gaussian kernel density of the same rates (Silverman bandwidth with IQR fallback, normalized to peak = 1). Read the *shape* — unimodal vs multimodal, fat tail vs tight bell.
+- **Per-day breakdown** — date / active hours / tokens / billing / rate-while-active. Top-rate day is highlighted.
+- **`raw / billing-equiv` toggle** (panel-level) — re-scales both charts. `raw` counts every input/output/cache token; `billing-equiv` weights them by Anthropic's pricing (cache_read × 0.1, cache_create_5m × 1.25, cache_create_1h × 2, output × 5) so the x axis is proportional to actual dollars.
+
+Minimum aggregation grain is a 30-minute slot — a slot's rate is `tokens_in_slot / active_minutes_in_slot × 60`. An *active minute* is any minute the transcripts show token usage. An *active slot* contains at least one active minute.
+
+Same analysis is also available headlessly:
+
+```bash
+python3 ~/.claude/skills/token-usage/scripts/work_efficiency.py 30   # last 30 days
+python3 ~/.claude/skills/token-usage/scripts/work_efficiency.py 7    # last 7 days
+```
+
+The dashboard endpoint backing the panel:
+```bash
+GET /api/efficiency?range=30d
+GET /api/efficiency?from=2026-04-01&to=2026-04-30
+```
 
 ### Patterns panel
 
@@ -182,7 +212,8 @@ token-usage/
 ├── scripts/
 │   ├── token_stats.py             Core: parse / dedupe / aggregate transcripts
 │   ├── count_tokens.py            CLI for time-range token counts
-│   └── analyze.py                 CLI for Patterns analysis + report export
+│   ├── analyze.py                 CLI for Patterns analysis + report export
+│   └── work_efficiency.py         Library + CLI: active-minute throughput, CDF/KDE inputs
 ├── analysis/                       Pure-Python analytics (no deps)
 │   ├── features.py                Descriptive / burstiness / Gini / ACF / runs / entropy
 │   ├── seasonal.py                Hour-of-day, day-of-week
