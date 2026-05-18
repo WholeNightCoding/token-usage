@@ -1,0 +1,1220 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Token 释放潜力 · 研究框架</title>
+<style>
+  :root {
+    --bg:           #fafafa;
+    --bg-soft:      #f5f5f7;
+    --bg-card:      #ffffff;
+    --border:       #e5e5e7;
+    --border-hair:  rgba(0,0,0,0.07);
+    --text:         #1d1d1f;
+    --text-muted:   #6e6e73;
+    --text-faint:   #a1a1a6;
+    --accent:       #0071e3;
+    --accent-soft:  rgba(0, 113, 227, 0.08);
+    --accent-line:  rgba(0, 113, 227, 0.35);
+    --good:         #34c759;
+    --good-soft:    rgba(52, 199, 89, 0.12);
+    --warn:         #ff9500;
+    --warn-soft:    rgba(255, 149, 0, 0.12);
+    --bad:          #ff3b30;
+    --bad-soft:     rgba(255, 59, 48, 0.12);
+    --radius:       14px;
+    --radius-sm:    8px;
+    --radius-xs:    4px;
+    --shadow:       0 1px 3px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.03);
+    --font: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', 'PingFang SC', sans-serif;
+    --font-display: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', 'PingFang SC', sans-serif;
+    --font-mono: 'SF Mono', ui-monospace, 'Cascadia Mono', Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 15px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 56px 32px 96px;
+  }
+
+  /* ─── header ─── */
+  header {
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 28px;
+    margin-bottom: 40px;
+  }
+  .eyebrow {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 12px;
+  }
+  h1 {
+    font-family: var(--font-display);
+    font-size: 38px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+    margin: 0 0 14px;
+  }
+  .subtitle {
+    font-size: 17px;
+    color: var(--text-muted);
+    max-width: 720px;
+    line-height: 1.5;
+  }
+
+  /* ─── sections ─── */
+  section {
+    margin-top: 56px;
+  }
+  section > h2 {
+    font-family: var(--font-display);
+    font-size: 24px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    margin: 0 0 8px;
+    display: flex;
+    align-items: baseline;
+    gap: 14px;
+  }
+  section > h2 .num {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--accent);
+    background: var(--accent-soft);
+    padding: 3px 8px;
+    border-radius: var(--radius-xs);
+    letter-spacing: 0.05em;
+  }
+  section > .lede {
+    color: var(--text-muted);
+    font-size: 15px;
+    margin: 0 0 24px;
+    max-width: 760px;
+  }
+
+  /* ─── cards ─── */
+  .card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 22px 24px;
+    box-shadow: var(--shadow);
+  }
+  .card + .card { margin-top: 16px; }
+  .card-title {
+    font-family: var(--font-display);
+    font-size: 14px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+    margin: 0 0 12px;
+  }
+
+  /* ─── 3-dim cards (section 1) ─── */
+  .dims {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+  }
+  .dim-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 24px;
+    position: relative;
+    box-shadow: var(--shadow);
+  }
+  .dim-card .symbol {
+    font-family: var(--font-mono);
+    font-size: 48px;
+    font-weight: 200;
+    line-height: 1;
+    margin-bottom: 4px;
+    letter-spacing: -0.04em;
+  }
+  .dim-card .symbol.t { color: #ff9500; }
+  .dim-card .symbol.c { color: #0071e3; }
+  .dim-card .symbol.i { color: var(--text-faint); }
+  .dim-card .name {
+    font-family: var(--font-display);
+    font-size: 18px;
+    font-weight: 600;
+    margin: 8px 0 4px;
+  }
+  .dim-card .chinese {
+    color: var(--text-muted);
+    font-size: 14px;
+    margin-bottom: 14px;
+  }
+  .dim-card .body {
+    font-size: 13.5px;
+    line-height: 1.55;
+    color: var(--text);
+    min-height: 90px;
+  }
+  .dim-card .verdict {
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border-hair);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .dim-card .verdict .mult {
+    font-size: 15px;
+    font-weight: 600;
+  }
+  .dim-card .tag {
+    font-size: 11px;
+    padding: 3px 8px;
+    border-radius: 999px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+  }
+  .tag.weak    { background: var(--warn-soft); color: var(--warn); }
+  .tag.strong  { background: var(--accent-soft); color: var(--accent); }
+  .tag.bogus   { background: var(--bg-soft); color: var(--text-muted); }
+  .tag.good    { background: var(--good-soft); color: var(--good); }
+  .tag.bad     { background: var(--bad-soft); color: var(--bad); }
+
+  /* ─── baseline data card ─── */
+  .baseline {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    box-shadow: var(--shadow);
+  }
+  .baseline > div {
+    padding: 20px 24px;
+    border-right: 1px solid var(--border-hair);
+  }
+  .baseline > div:last-child { border-right: none; }
+  .baseline .b-label {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+  }
+  .baseline .b-value {
+    font-family: var(--font-mono);
+    font-size: 26px;
+    font-weight: 600;
+    color: var(--text);
+    letter-spacing: -0.02em;
+  }
+  .baseline .b-hint {
+    font-size: 11px;
+    color: var(--text-faint);
+    margin-top: 6px;
+  }
+
+  .formula {
+    margin-top: 20px;
+    padding: 28px 32px;
+    background: linear-gradient(180deg, var(--bg-card), var(--bg-soft));
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    text-align: center;
+    font-family: var(--font-mono);
+    font-size: 20px;
+    line-height: 1.6;
+    letter-spacing: 0.02em;
+  }
+  .formula .row { display: block; }
+  .formula .R     { color: var(--accent); font-weight: 700; }
+  .formula .T     { color: var(--warn); font-weight: 600; }
+  .formula .C     { color: var(--accent); font-weight: 600; }
+  .formula .small { font-size: 14px; color: var(--text-muted); margin-top: 8px; font-family: var(--font); }
+  .formula .op    { color: var(--text-muted); padding: 0 4px; }
+
+  /* ─── interactive explorer ─── */
+  .explorer {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+  }
+  .controls {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 24px;
+    box-shadow: var(--shadow);
+  }
+  .control {
+    margin-bottom: 22px;
+  }
+  .control:last-child { margin-bottom: 0; }
+  .control-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 8px;
+  }
+  .control-name {
+    font-weight: 600;
+    font-size: 14px;
+  }
+  .control-name .lbl {
+    font-family: var(--font-mono);
+    color: var(--accent);
+    background: var(--accent-soft);
+    padding: 2px 6px;
+    border-radius: var(--radius-xs);
+    font-size: 12px;
+    margin-right: 8px;
+  }
+  .control-name .lbl.t { color: var(--warn); background: var(--warn-soft); }
+  .control-val {
+    font-family: var(--font-mono);
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+  }
+  .control-hint {
+    font-size: 12px;
+    color: var(--text-faint);
+    margin-top: 6px;
+    font-family: var(--font-mono);
+  }
+  input[type=range] {
+    width: 100%;
+    -webkit-appearance: none;
+    appearance: none;
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    outline: none;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 18px;
+    height: 18px;
+    background: var(--accent);
+    border-radius: 50%;
+    cursor: pointer;
+    border: 3px solid white;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.18);
+  }
+  input[type=range].t-color::-webkit-slider-thumb {
+    background: var(--warn);
+  }
+  input[type=range]::-moz-range-thumb {
+    width: 18px;
+    height: 18px;
+    background: var(--accent);
+    border-radius: 50%;
+    cursor: pointer;
+    border: 3px solid white;
+  }
+
+  .result {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 24px;
+    box-shadow: var(--shadow);
+    display: flex;
+    flex-direction: column;
+  }
+  .big-r {
+    font-family: var(--font-mono);
+    font-size: 76px;
+    font-weight: 700;
+    letter-spacing: -0.04em;
+    line-height: 0.95;
+    color: var(--accent);
+    text-align: center;
+    margin: 14px 0 8px;
+  }
+  .big-r small { font-size: 32px; font-weight: 400; color: var(--text-muted); }
+  .big-r-caption {
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 13px;
+    margin-bottom: 18px;
+  }
+  .contribution {
+    margin-top: 12px;
+  }
+  .contribution-row {
+    display: grid;
+    grid-template-columns: 24px 1fr 60px;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 8px;
+    font-family: var(--font-mono);
+    font-size: 13px;
+  }
+  .contribution-row .axis { font-weight: 600; }
+  .contribution-row .axis.t { color: var(--warn); }
+  .contribution-row .axis.c { color: var(--accent); }
+  .contribution-row .bar-bg {
+    height: 14px;
+    background: var(--bg-soft);
+    border-radius: 3px;
+    overflow: hidden;
+    position: relative;
+  }
+  .contribution-row .bar-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 200ms ease-out;
+  }
+  .contribution-row .bar-fill.t { background: var(--warn); }
+  .contribution-row .bar-fill.c { background: var(--accent); }
+  .contribution-row .val {
+    text-align: right;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+  .delivered {
+    margin-top: auto;
+    padding-top: 16px;
+    border-top: 1px solid var(--border-hair);
+    font-size: 13px;
+    color: var(--text-muted);
+    line-height: 1.6;
+  }
+  .delivered b {
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-weight: 600;
+  }
+
+  /* ─── presets ─── */
+  .presets {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 18px;
+    padding-top: 18px;
+    border-top: 1px solid var(--border-hair);
+  }
+  .preset {
+    font-family: var(--font);
+    font-size: 12px;
+    padding: 6px 12px;
+    border: 1px solid var(--border);
+    background: var(--bg-card);
+    border-radius: 999px;
+    cursor: pointer;
+    color: var(--text-muted);
+    transition: all 120ms;
+  }
+  .preset:hover {
+    border-color: var(--accent-line);
+    color: var(--accent);
+  }
+  .preset.active {
+    background: var(--accent);
+    color: white;
+    border-color: var(--accent);
+  }
+
+  /* ─── ceiling demo (section 4) ─── */
+  .ceiling-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+  }
+  .hist-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 24px;
+    box-shadow: var(--shadow);
+  }
+  .hist-svg {
+    width: 100%;
+    height: 220px;
+  }
+  .legend {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 16px;
+  }
+  .legend-row {
+    display: grid;
+    grid-template-columns: 24px 90px 1fr 80px;
+    align-items: center;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    gap: 12px;
+  }
+  .legend-row .icon {
+    width: 22px;
+    text-align: center;
+    font-size: 14px;
+    line-height: 1;
+  }
+  .legend-row .name { font-weight: 600; }
+  .legend-row .desc { color: var(--text-muted); font-family: var(--font); font-size: 13px; }
+  .legend-row .num {
+    text-align: right;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+  .legend-row.good .num    { color: var(--good); }
+  .legend-row.bad  .num    { color: var(--bad); }
+  .legend-row.bad  .icon   { color: var(--bad); }
+  .legend-row.good .icon   { color: var(--good); }
+  .legend-row.warn .icon   { color: var(--warn); }
+  .legend-row.warn .num    { color: var(--warn); }
+  .ceiling-words {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 24px;
+    box-shadow: var(--shadow);
+  }
+  .ceiling-words h3 {
+    font-family: var(--font-display);
+    font-size: 15px;
+    margin: 0 0 12px;
+  }
+  .ceiling-words p {
+    font-size: 13.5px;
+    color: var(--text-muted);
+    margin: 0 0 14px;
+    line-height: 1.6;
+  }
+  .ceiling-words ul {
+    font-size: 13.5px;
+    line-height: 1.7;
+    padding-left: 18px;
+    margin: 0;
+  }
+
+  /* ─── tier section ─── */
+  .tier-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+  .tier-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+    box-shadow: var(--shadow);
+  }
+  .tier-card.new    { border-top: 3px solid var(--warn); }
+  .tier-card.mid    { border-top: 3px solid var(--accent); }
+  .tier-card.mature { border-top: 3px solid var(--good); }
+  .tier-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 4px;
+  }
+  .tier-name {
+    font-family: var(--font-display);
+    font-size: 17px;
+    font-weight: 600;
+  }
+  .tier-share {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+  .tier-card .desc {
+    font-size: 12.5px;
+    color: var(--text-muted);
+    margin-bottom: 14px;
+    line-height: 1.5;
+  }
+  .gap-vis {
+    height: 36px;
+    background: var(--bg-soft);
+    border-radius: var(--radius-sm);
+    position: relative;
+    margin: 8px 0 10px;
+    overflow: hidden;
+  }
+  .gap-vis .cur {
+    position: absolute;
+    top: 0; left: 0; bottom: 0;
+    background: var(--accent);
+    opacity: 0.55;
+    border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+    transition: width 200ms ease-out;
+  }
+  .gap-vis .ceiling-mark {
+    position: absolute;
+    top: 0; bottom: 0;
+    width: 2px;
+    background: var(--text);
+    transition: left 200ms ease-out;
+  }
+  .gap-vis .ceiling-label {
+    position: absolute;
+    bottom: 100%;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-muted);
+    padding-bottom: 2px;
+    transform: translateX(-50%);
+    transition: left 200ms ease-out;
+    white-space: nowrap;
+  }
+  .gap-vis .cur-label {
+    position: absolute;
+    bottom: 100%;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--accent);
+    padding-bottom: 2px;
+    transform: translateX(-50%);
+    transition: left 200ms ease-out;
+    white-space: nowrap;
+  }
+  .tier-stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 8px;
+    margin-top: 18px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+  }
+  .tier-stats > div {
+    padding: 8px 10px;
+    background: var(--bg-soft);
+    border-radius: var(--radius-xs);
+  }
+  .tier-stats .k { color: var(--text-faint); font-size: 10px; margin-bottom: 2px; }
+  .tier-stats .v { font-weight: 600; font-variant-numeric: tabular-nums; }
+  .tier-stats .v.headroom { color: var(--accent); }
+  .tier-slider {
+    margin-top: 14px;
+  }
+  .tier-slider .control-head { margin-bottom: 6px; }
+  .tier-slider .control-name { font-size: 12px; }
+
+  .tier-summary {
+    background: linear-gradient(180deg, var(--accent-soft), transparent);
+    border: 1px solid var(--accent-line);
+    border-radius: var(--radius);
+    padding: 22px 26px;
+    display: grid;
+    grid-template-columns: auto 1fr;
+    align-items: center;
+    gap: 24px;
+  }
+  .tier-summary .big {
+    font-family: var(--font-mono);
+    font-size: 44px;
+    font-weight: 700;
+    color: var(--accent);
+    letter-spacing: -0.02em;
+    line-height: 1;
+  }
+  .tier-summary .txt {
+    font-size: 14px;
+    color: var(--text);
+    line-height: 1.55;
+  }
+  .tier-summary .txt b {
+    font-family: var(--font-mono);
+    color: var(--accent);
+  }
+
+  /* ─── takeaways ─── */
+  .takeaways {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+  }
+  .takeaway {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: var(--radius-sm);
+    padding: 18px 20px;
+    box-shadow: var(--shadow);
+  }
+  .takeaway .num {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--accent);
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    margin-bottom: 6px;
+  }
+  .takeaway .body {
+    font-size: 13.5px;
+    line-height: 1.55;
+  }
+  .takeaway .body b { font-weight: 600; }
+
+  footer {
+    margin-top: 64px;
+    padding-top: 24px;
+    border-top: 1px solid var(--border);
+    font-size: 12px;
+    color: var(--text-faint);
+    text-align: center;
+    line-height: 1.6;
+  }
+  footer code {
+    font-family: var(--font-mono);
+    background: var(--bg-soft);
+    padding: 1px 6px;
+    border-radius: 3px;
+  }
+
+  @media (max-width: 880px) {
+    .dims, .takeaways, .tier-grid { grid-template-columns: 1fr; }
+    .baseline { grid-template-columns: 1fr 1fr; }
+    .ceiling-grid, .explorer { grid-template-columns: 1fr; }
+    h1 { font-size: 30px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="eyebrow">Research playground · v0.1</div>
+  <h1>Token 释放潜力</h1>
+  <p class="subtitle">你的 Claude Code token 产出现在有多少倍提升空间？这个估算框架按"时间填充 × 并发填充"做乘法，ceiling 用历史 P95 实证导出，而非拍脑袋。下面是可玩的版本——拖动滑杆看你能挤出多少。</p>
+</header>
+
+<!-- ─── Section 1: three dimensions ─── -->
+<section>
+  <h2><span class="num">01</span>三个潜力维度</h2>
+  <p class="lede">把"潜力"拆成三个正交轴，分别评估能挤出的倍数和现实约束。结论先放这儿：<b>T 次要、C 是真杠杆、I 是伪命题</b>。</p>
+
+  <div class="dims">
+    <div class="dim-card">
+      <div class="symbol t">T</div>
+      <div class="name">Time-fill</div>
+      <div class="chinese">时间填充</div>
+      <div class="body">你不工作的小时如果都拿来工作，能多产出多少。简单数学：当前 21.9% 占比，按 8h/d 算上限 1.52×，按 12h/d 算上限 2.28×。</div>
+      <div class="verdict">
+        <span class="mult">≤ 2.3×</span>
+        <span class="tag weak">次要杠杆</span>
+      </div>
+    </div>
+
+    <div class="dim-card">
+      <div class="symbol c">C</div>
+      <div class="name">Concurrency-fill</div>
+      <div class="chinese">并发填充</div>
+      <div class="body">活跃时段并行跑 K 个 Claude session 能多产出多少。不增加你的工作时长——<b>复用</b>等模型返回的等待时间。认知带宽是软上限。</div>
+      <div class="verdict">
+        <span class="mult">≤ 4×</span>
+        <span class="tag strong">主杠杆</span>
+      </div>
+    </div>
+
+    <div class="dim-card">
+      <div class="symbol i">I</div>
+      <div class="name">Intensity-fill</div>
+      <div class="chinese">强度填充</div>
+      <div class="body">让每分钟的速率更高。但你的速率分布是<b>单峰钟形</b>——意味着吞吐由 Claude 响应速度和 prompt 设计决定，不是你能"使劲推"的。</div>
+      <div class="verdict">
+        <span class="mult">≤ 1.3×</span>
+        <span class="tag bogus">伪命题</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─── Section 2: baseline + formula ─── -->
+<section>
+  <h2><span class="num">02</span>当前基线 · 公式</h2>
+  <p class="lede">下面所有计算都基于这个示例 30 天窗口。把基线扣进公式里就能算出"如果……会产出多少"。</p>
+
+  <div class="baseline">
+    <div>
+      <div class="b-label">Active hours</div>
+      <div class="b-value">157.6h</div>
+      <div class="b-hint">30 天里有 token 消耗的分钟</div>
+    </div>
+    <div>
+      <div class="b-label">% of wall-clock</div>
+      <div class="b-value">21.9%</div>
+      <div class="b-hint">157.6 / 720</div>
+    </div>
+    <div>
+      <div class="b-label">Avg concurrency</div>
+      <div class="b-value">1.2×</div>
+      <div class="b-hint">活跃分钟的平均并发 session 数</div>
+    </div>
+    <div>
+      <div class="b-label">Token baseline</div>
+      <div class="b-value">14.6B</div>
+      <div class="b-hint">raw token / 30 天</div>
+    </div>
+  </div>
+
+  <div class="formula">
+    <span class="row"><span class="R">R_total</span> = <span class="T">T_fill</span> <span class="op">×</span> <span class="C">C_fill</span></span>
+    <span class="row" style="font-size:16px; margin-top:8px;">
+      = (<span class="T">T_target / T_current</span>) <span class="op">×</span> (<span class="C">C_target / C_current</span>)
+    </span>
+    <div class="small">乘法的意思是：两个杠杆同时拉满，效果是相乘的，不是相加。</div>
+  </div>
+</section>
+
+<!-- ─── Section 3: interactive explorer ─── -->
+<section>
+  <h2><span class="num">03</span>交互探索器</h2>
+  <p class="lede">拖动两个滑杆，看 R_total 和它的拆解怎么变。可以用预设快速比较几种思路。</p>
+
+  <div class="explorer">
+    <div class="controls">
+      <div class="control">
+        <div class="control-head">
+          <span class="control-name"><span class="lbl t">T</span>每天工作时长 (target)</span>
+          <span class="control-val" id="t-val">5.2h</span>
+        </div>
+        <input type="range" id="t-slider" class="t-color" min="5.2" max="24" step="0.1" value="5.2" />
+        <div class="control-hint">当前 = 5.2h/d（157.6h ÷ 30d）。拉满 = 24h（理论上限，不现实）</div>
+      </div>
+      <div class="control">
+        <div class="control-head">
+          <span class="control-name"><span class="lbl">C</span>平均并发 (target)</span>
+          <span class="control-val" id="c-val">1.2</span>
+        </div>
+        <input type="range" id="c-slider" min="1.2" max="6" step="0.1" value="1.2" />
+        <div class="control-hint">当前 = 1.2 路。P95 实证 ceiling ≈ 3.5 路。极限 ≈ 6（再多人脑跟不上）</div>
+      </div>
+
+      <div class="presets">
+        <button class="preset" data-preset="baseline">基线（=当前）</button>
+        <button class="preset" data-preset="time-only">只加时间 (8h/d)</button>
+        <button class="preset" data-preset="conc-only">只加并发 (3 路)</button>
+        <button class="preset active" data-preset="realistic">现实主义（8h × 3 路）</button>
+        <button class="preset" data-preset="aggressive">激进（12h × 4 路）</button>
+        <button class="preset" data-preset="absurd">物理学家（24h × 6 路）</button>
+      </div>
+    </div>
+
+    <div class="result">
+      <div class="card-title">总潜力倍数</div>
+      <div class="big-r" id="r-val">1.00<small>×</small></div>
+      <div class="big-r-caption" id="r-caption">在当前基线之上的产出倍数</div>
+
+      <div class="contribution">
+        <div class="contribution-row">
+          <span class="axis t">T</span>
+          <div class="bar-bg"><div class="bar-fill t" id="t-bar" style="width:0%"></div></div>
+          <span class="val" id="t-fill">1.00×</span>
+        </div>
+        <div class="contribution-row">
+          <span class="axis c">C</span>
+          <div class="bar-bg"><div class="bar-fill c" id="c-bar" style="width:0%"></div></div>
+          <span class="val" id="c-fill">1.00×</span>
+        </div>
+      </div>
+
+      <div class="delivered">
+        在 14.6B baseline 之上 → <b id="delivered-tok">14.6B</b> token / 30 天
+        <br />等于年化 <b id="annualized">177B</b> token
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─── Section 4: ceiling — P95 vs Mean vs Max ─── -->
+<section>
+  <h2><span class="num">04</span>Ceiling 该用哪个值？</h2>
+  <p class="lede">这是整套框架最容易出错的地方。下面的直方图模拟你 30 天里 30 分钟槽位的并发度分布——三种取法给出完全不同的 ceiling。</p>
+
+  <div class="ceiling-grid">
+    <div class="hist-card">
+      <div class="card-title">并发度分布（示例）</div>
+      <svg class="hist-svg" id="hist" viewBox="0 0 480 220" preserveAspectRatio="none"></svg>
+      <div class="legend">
+        <div class="legend-row bad">
+          <span class="icon">✗</span><span class="name">Mean</span>
+          <span class="desc">算术平均，把摸鱼时段一起平了</span><span class="num">1.6 路</span>
+        </div>
+        <div class="legend-row warn">
+          <span class="icon">⚠</span><span class="name">Max</span>
+          <span class="desc">历史最高，可能是 5 分钟偶然峰值</span><span class="num">6 路</span>
+        </div>
+        <div class="legend-row good">
+          <span class="icon">✓</span><span class="name">P95 sustained</span>
+          <span class="desc">实证过的可持续天花板</span><span class="num">4 路</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="ceiling-words">
+      <h3>为什么是 P95，不是别的？</h3>
+      <p>因为它回答的问题不一样：</p>
+      <ul>
+        <li><b style="color:var(--bad)">Mean 1.6</b> —— "你平均干啥"。<b>埋没</b>了你在高强度时段的真实能力。</li>
+        <li><b style="color:var(--warn)">Max 6</b> —— "你曾经达到的极限"。可能只持续了 5 分钟，<b>不可持续</b>，把它当 ceiling 是骗自己。</li>
+        <li><b style="color:var(--good)">P95 sustained 4</b> —— "你<b>实证过</b>能稳定撑 30 分钟以上的强度"。是诚实的天花板：不靠想象，靠数据。</li>
+      </ul>
+      <p style="margin-top:18px;">P95 是 <b>30 分钟窗口</b>的分位数——意味着这个值排除了"刚 spawn 一堆 session 立刻退掉"那种统计噪声，只保留了真有持续运转的窗口。</p>
+    </div>
+  </div>
+</section>
+
+<!-- ─── Section 5: tier-conditional ceiling ─── -->
+<section>
+  <h2><span class="num">05</span>按项目熟悉度分桶</h2>
+  <p class="lede">一个全局 P95 隐去了一个关键事实：<b>新项目和老项目的可承载并发完全不同</b>。新项目思考密集，老项目熟练操作多。下面按项目熟悉度分 3 桶，分别测 ceiling，再加权综合。</p>
+
+  <div class="tier-grid">
+    <div class="tier-card new">
+      <div class="tier-head">
+        <span class="tier-name">新生项目</span>
+        <span class="tier-share" id="tier1-share">~30%</span>
+      </div>
+      <div class="desc">最近 7 天首次出现 · 思考重 · 启动期</div>
+      <div class="gap-vis">
+        <div class="cur" id="tier1-cur-bar"></div>
+        <div class="ceiling-mark" id="tier1-ceil-mark"></div>
+        <div class="cur-label" id="tier1-cur-label">cur 0.9</div>
+        <div class="ceiling-label" id="tier1-ceil-label">P95 1.5</div>
+      </div>
+      <div class="tier-stats">
+        <div><div class="k">CURRENT</div><div class="v" id="tier1-cur-txt">0.9</div></div>
+        <div><div class="k">CEILING</div><div class="v" id="tier1-ceil-txt">1.5</div></div>
+        <div><div class="k">HEADROOM</div><div class="v headroom" id="tier1-room">1.67×</div></div>
+      </div>
+      <div class="tier-slider">
+        <div class="control-head">
+          <span class="control-name">current</span>
+          <span class="control-val" id="tier1-cur-val">0.9</span>
+        </div>
+        <input type="range" id="tier1-cur" min="0.5" max="3" step="0.1" value="0.9" />
+      </div>
+    </div>
+
+    <div class="tier-card mid">
+      <div class="tier-head">
+        <span class="tier-name">中熟项目</span>
+        <span class="tier-share" id="tier2-share">~45%</span>
+      </div>
+      <div class="desc">迭代中 · 部分流程已熟练</div>
+      <div class="gap-vis">
+        <div class="cur" id="tier2-cur-bar"></div>
+        <div class="ceiling-mark" id="tier2-ceil-mark"></div>
+        <div class="cur-label" id="tier2-cur-label">cur 1.2</div>
+        <div class="ceiling-label" id="tier2-ceil-label">P95 2.8</div>
+      </div>
+      <div class="tier-stats">
+        <div><div class="k">CURRENT</div><div class="v" id="tier2-cur-txt">1.2</div></div>
+        <div><div class="k">CEILING</div><div class="v" id="tier2-ceil-txt">2.8</div></div>
+        <div><div class="k">HEADROOM</div><div class="v headroom" id="tier2-room">2.33×</div></div>
+      </div>
+      <div class="tier-slider">
+        <div class="control-head">
+          <span class="control-name">current</span>
+          <span class="control-val" id="tier2-cur-val">1.2</span>
+        </div>
+        <input type="range" id="tier2-cur" min="0.5" max="4" step="0.1" value="1.2" />
+      </div>
+    </div>
+
+    <div class="tier-card mature">
+      <div class="tier-head">
+        <span class="tier-name">老练项目</span>
+        <span class="tier-share" id="tier3-share">~25%</span>
+      </div>
+      <div class="desc">很熟悉 · 大段批量操作 · 易并发</div>
+      <div class="gap-vis">
+        <div class="cur" id="tier3-cur-bar"></div>
+        <div class="ceiling-mark" id="tier3-ceil-mark"></div>
+        <div class="cur-label" id="tier3-cur-label">cur 1.5</div>
+        <div class="ceiling-label" id="tier3-ceil-label">P95 4.2</div>
+      </div>
+      <div class="tier-stats">
+        <div><div class="k">CURRENT</div><div class="v" id="tier3-cur-txt">1.5</div></div>
+        <div><div class="k">CEILING</div><div class="v" id="tier3-ceil-txt">4.2</div></div>
+        <div><div class="k">HEADROOM</div><div class="v headroom" id="tier3-room">2.80×</div></div>
+      </div>
+      <div class="tier-slider">
+        <div class="control-head">
+          <span class="control-name">current</span>
+          <span class="control-val" id="tier3-cur-val">1.5</span>
+        </div>
+        <input type="range" id="tier3-cur" min="0.5" max="5" step="0.1" value="1.5" />
+      </div>
+    </div>
+  </div>
+
+  <div class="tier-summary">
+    <div class="big" id="tier-total">2.20×</div>
+    <div class="txt">
+      加权综合 headroom（按 token 占比）= <b id="tier-formula">0.30 × 1.67 + 0.45 × 2.33 + 0.25 × 2.80</b><br/>
+      <span style="color:var(--text-muted)">→ 在不动作息、不雇人的前提下，纯靠按 tier 最大化并发，可以提升 <b id="tier-total-inline">2.20×</b> 产出。最大杠杆通常在<b id="biggest-tier">老练项目</b>（headroom 最大）。</span>
+    </div>
+  </div>
+</section>
+
+<!-- ─── Section 6: takeaways ─── -->
+<section>
+  <h2><span class="num">06</span>三条核心结论</h2>
+  <div class="takeaways">
+    <div class="takeaway">
+      <div class="num">TAKEAWAY 1</div>
+      <div class="body"><b>C 是真杠杆，不是 T</b>。你延长工作时长撑死 2×，但开多路 Claude 能挤 3×；两者乘起来才有 5-6× 的真潜力。</div>
+    </div>
+    <div class="takeaway">
+      <div class="num">TAKEAWAY 2</div>
+      <div class="body"><b>Ceiling 用 P95，不用 mean 或 max</b>。P95 是"实证过能稳住 30 分钟"的诚实天花板，平均掩盖能力、最大值不可持续。</div>
+    </div>
+    <div class="takeaway">
+      <div class="num">TAKEAWAY 3</div>
+      <div class="body"><b>潜力主要藏在老项目里</b>。熟悉度允许更高并发，gap 也最大。新项目想多开 Claude 也开不动——认知带宽就那么宽。</div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  示例数据 · 当真正的并发度采集落地后，所有数字会变成实测。<br/>
+  数据源：<code>~/.claude/projects/**/*.jsonl</code> ·
+  <code>scripts/work_efficiency.py</code> 已实现 · concurrency 模块待加
+</footer>
+
+</div>
+
+<script>
+'use strict';
+
+const T_CURRENT = 5.2;      // h/d
+const C_CURRENT = 1.2;      // avg
+const BASELINE_TOK = 14.6;  // B raw / 30d
+
+const state = {
+  t: T_CURRENT,
+  c: C_CURRENT,
+  tier1Cur: 0.9,
+  tier2Cur: 1.2,
+  tier3Cur: 1.5,
+};
+
+const TIER_CEILINGS = { t1: 1.5, t2: 2.8, t3: 4.2 };
+const TIER_SHARES   = { t1: 0.30, t2: 0.45, t3: 0.25 };
+
+// ─── helpers ───
+const $ = (s) => document.querySelector(s);
+const fmt = (n, dp = 2) => n.toFixed(dp);
+const fmtTok = (b) => b >= 1000 ? (b/1000).toFixed(2) + 'T' : b.toFixed(1) + 'B';
+
+function updateExplorer() {
+  const tFill = state.t / T_CURRENT;
+  const cFill = state.c / C_CURRENT;
+  const rTotal = tFill * cFill;
+
+  $('#t-val').textContent = fmt(state.t, 1) + 'h';
+  $('#c-val').textContent = fmt(state.c, 1);
+
+  $('#r-val').innerHTML = fmt(rTotal, 2) + '<small>×</small>';
+  $('#t-fill').textContent = fmt(tFill, 2) + '×';
+  $('#c-fill').textContent = fmt(cFill, 2) + '×';
+
+  // bar widths — scale relative to max possible (T can go ~4.6×, C can go ~5×)
+  const maxScale = Math.max(tFill, cFill, 5);
+  $('#t-bar').style.width = (tFill / maxScale * 100) + '%';
+  $('#c-bar').style.width = (cFill / maxScale * 100) + '%';
+
+  const deliveredB = BASELINE_TOK * rTotal;
+  const annualizedB = deliveredB * 12;
+  $('#delivered-tok').textContent = fmtTok(deliveredB);
+  $('#annualized').textContent = fmtTok(annualizedB);
+
+  // caption commentary
+  let caption = '在当前基线之上的产出倍数';
+  if (rTotal < 1.05) caption = '当前基线';
+  else if (rTotal < 2)   caption = '温和提升';
+  else if (rTotal < 4)   caption = '显著提升 — 主要靠并发';
+  else if (rTotal < 8)   caption = '激进提升 — 时间+并发双拉';
+  else                   caption = '物理学家区 — 不现实';
+  $('#r-caption').textContent = caption;
+}
+
+function updateTier(i) {
+  const cur = state['tier' + i + 'Cur'];
+  const ceil = TIER_CEILINGS['t' + i];
+  const room = ceil / cur;
+
+  $('#tier' + i + '-cur-val').textContent = fmt(cur, 1);
+  $('#tier' + i + '-cur-txt').textContent = fmt(cur, 1);
+  $('#tier' + i + '-room').textContent = fmt(room, 2) + '×';
+
+  // bar visualization — scale within [0, 5] for a unified axis
+  const SCALE_MAX = 5;
+  const curPct = Math.min(100, cur / SCALE_MAX * 100);
+  const ceilPct = Math.min(100, ceil / SCALE_MAX * 100);
+  $('#tier' + i + '-cur-bar').style.width = curPct + '%';
+  $('#tier' + i + '-ceil-mark').style.left = ceilPct + '%';
+  $('#tier' + i + '-cur-label').style.left = curPct + '%';
+  $('#tier' + i + '-cur-label').textContent = 'cur ' + fmt(cur, 1);
+  $('#tier' + i + '-ceil-label').style.left = ceilPct + '%';
+}
+
+function updateTierSummary() {
+  const r1 = TIER_CEILINGS.t1 / state.tier1Cur;
+  const r2 = TIER_CEILINGS.t2 / state.tier2Cur;
+  const r3 = TIER_CEILINGS.t3 / state.tier3Cur;
+  const total = TIER_SHARES.t1 * r1 + TIER_SHARES.t2 * r2 + TIER_SHARES.t3 * r3;
+
+  $('#tier-total').textContent = fmt(total, 2) + '×';
+  $('#tier-total-inline').textContent = fmt(total, 2) + '×';
+  $('#tier-formula').textContent =
+    `${TIER_SHARES.t1.toFixed(2)} × ${fmt(r1, 2)} + ${TIER_SHARES.t2.toFixed(2)} × ${fmt(r2, 2)} + ${TIER_SHARES.t3.toFixed(2)} × ${fmt(r3, 2)}`;
+
+  // biggest contributor (in terms of weighted gain)
+  const gains = {
+    '新生项目':   TIER_SHARES.t1 * (r1 - 1),
+    '中熟项目':   TIER_SHARES.t2 * (r2 - 1),
+    '老练项目':   TIER_SHARES.t3 * (r3 - 1),
+  };
+  let max = '老练项目'; let maxV = -Infinity;
+  for (const [k, v] of Object.entries(gains)) if (v > maxV) { max = k; maxV = v; }
+  $('#biggest-tier').textContent = max;
+}
+
+function updateAll() {
+  updateExplorer();
+  updateTier(1); updateTier(2); updateTier(3);
+  updateTierSummary();
+}
+
+// ─── histogram for section 4 ───
+function drawHistogram() {
+  // realistic-ish concurrency distribution where mean ≈ 1.6, P95 ≈ 4, max = 6
+  const buckets = [
+    { c: 1, prob: 0.62 },
+    { c: 2, prob: 0.20 },
+    { c: 3, prob: 0.10 },
+    { c: 4, prob: 0.05 },
+    { c: 5, prob: 0.02 },
+    { c: 6, prob: 0.01 },
+  ];
+  const svg = $('#hist');
+  const W = 480, H = 220;
+  const padL = 36, padR = 16, padT = 18, padB = 30;
+  const cw = (W - padL - padR) / buckets.length;
+  const maxProb = Math.max(...buckets.map(b => b.prob));
+  const yScale = (H - padT - padB) / maxProb;
+
+  let s = '';
+
+  // y axis gridlines
+  for (let i = 0; i <= 4; i++) {
+    const y = padT + (H - padT - padB) * (i / 4);
+    const v = (maxProb * (1 - i/4) * 100).toFixed(0);
+    s += `<line x1="${padL}" y1="${y}" x2="${W-padR}" y2="${y}" stroke="rgba(0,0,0,0.05)" />`;
+    s += `<text x="${padL-6}" y="${y+4}" text-anchor="end" font-family="ui-monospace" font-size="10" fill="#a1a1a6">${v}%</text>`;
+  }
+
+  // bars
+  buckets.forEach((b, idx) => {
+    const x = padL + idx * cw + 4;
+    const w = cw - 8;
+    const barH = b.prob * yScale;
+    const y = H - padB - barH;
+    s += `<rect x="${x}" y="${y}" width="${w}" height="${barH}" fill="#0071e3" opacity="0.85" rx="2" />`;
+    s += `<text x="${padL + idx * cw + cw/2}" y="${H - padB + 16}" text-anchor="middle" font-family="ui-monospace" font-size="11" fill="#6e6e73">${b.c}</text>`;
+  });
+
+  // x label
+  s += `<text x="${(W)/2}" y="${H-4}" text-anchor="middle" font-family="-apple-system" font-size="11" fill="#a1a1a6">并发度 (路)</text>`;
+
+  // markers — mean / P95 / max
+  function marker(value, color, label, dy = 0) {
+    const idx = buckets.findIndex(b => b.c === Math.round(value));
+    const x = padL + idx * cw + cw/2;
+    s += `<line x1="${x}" y1="${padT}" x2="${x}" y2="${H-padB}" stroke="${color}" stroke-width="2" stroke-dasharray="3 3" />`;
+    s += `<rect x="${x-22}" y="${padT - 4 + dy}" width="48" height="14" fill="${color}" rx="2"/>`;
+    s += `<text x="${x}" y="${padT + 6 + dy}" text-anchor="middle" font-family="ui-monospace" font-size="9.5" fill="white" font-weight="700">${label}</text>`;
+  }
+  marker(1.6, '#ff3b30', 'MEAN',  0);     // ~ bucket 2
+  marker(4,   '#34c759', 'P95',  18);
+  marker(6,   '#ff9500', 'MAX',   0);
+
+  svg.innerHTML = s;
+}
+
+// ─── presets ───
+const PRESETS = {
+  baseline:  { t: T_CURRENT, c: C_CURRENT },
+  'time-only': { t: 8,    c: C_CURRENT },
+  'conc-only': { t: T_CURRENT, c: 3 },
+  realistic: { t: 8,    c: 3 },
+  aggressive:{ t: 12,   c: 4 },
+  absurd:    { t: 24,   c: 6 },
+};
+document.querySelectorAll('.preset').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.preset').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const p = PRESETS[btn.dataset.preset];
+    state.t = p.t; state.c = p.c;
+    $('#t-slider').value = p.t;
+    $('#c-slider').value = p.c;
+    updateExplorer();
+  });
+});
+
+// ─── slider wiring ───
+$('#t-slider').addEventListener('input', (e) => {
+  state.t = Number(e.target.value);
+  document.querySelectorAll('.preset').forEach(b => b.classList.remove('active'));
+  updateExplorer();
+});
+$('#c-slider').addEventListener('input', (e) => {
+  state.c = Number(e.target.value);
+  document.querySelectorAll('.preset').forEach(b => b.classList.remove('active'));
+  updateExplorer();
+});
+
+for (const i of [1, 2, 3]) {
+  $('#tier' + i + '-cur').addEventListener('input', (e) => {
+    state['tier' + i + 'Cur'] = Number(e.target.value);
+    updateTier(i);
+    updateTierSummary();
+  });
+}
+
+// ─── init ───
+drawHistogram();
+// start at the "realistic" preset
+document.querySelector('[data-preset="realistic"]').click();
+updateAll();
+
+// redraw histogram on resize for crispness
+window.addEventListener('resize', () => {
+  // SVG uses viewBox so no redraw needed; left here for future tweaks
+});
+</script>
+
+</body>
+</html>

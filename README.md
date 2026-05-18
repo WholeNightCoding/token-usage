@@ -204,6 +204,18 @@ The Patterns panel computes 11 indicators from established statistical / informa
 
 ---
 
+## Research playgrounds
+
+Interactive single-file HTML pages for exploring open research questions before they graduate to shipped features. Self-contained, no build step.
+
+| Playground | Question |
+|---|---|
+| [`release-potential.html`](./docs/research/release-potential.html) | How much more token output could you realistically produce? Decomposes potential into Time × Concurrency, derives Ceiling from historical P95 (not mean/max), shows per-project-tier breakdown. Sliders + presets. |
+
+Open with `open ~/.claude/skills/token-usage/docs/research/release-potential.html` or drag the file into any browser. See [`docs/research/README.md`](./docs/research/README.md) for the graduation pipeline.
+
+---
+
 ## Architecture
 
 ```
@@ -223,6 +235,9 @@ token-usage/
 ├── dashboard/
 │   ├── server.py                  Stdlib http.server, JSON API + static
 │   └── static/                    HTML / CSS / vanilla-JS dashboard
+├── docs/
+│   ├── screenshots/               README screenshots + capture.ts
+│   └── research/                  Interactive research playgrounds (single-file HTML)
 └── menubar/
     └── app.py                     macOS menubar (rumps), optional
 ```

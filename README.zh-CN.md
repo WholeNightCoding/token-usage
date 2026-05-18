@@ -205,6 +205,18 @@ Patterns 面板用 11 个来自经典统计 / 信息论的指标，全部在 `an
 
 ---
 
+## Research playgrounds（研究探索页）
+
+放未成形的研究想法的地方。每个文件都是单文件 HTML，直接 `open` 就能玩，不依赖 build / CDN。等某个想法从这里"毕业"到正式 metric，再迁进 `scripts/` 或 `dashboard/`。
+
+| Playground | 探索的问题 |
+|---|---|
+| [`release-potential.html`](./docs/research/release-potential.html) | 你 token 产出还能释放多少倍？把潜力拆成 时间 × 并发 两个轴，ceiling 用历史 P95 实证导出（不是平均也不是 max），并按项目熟悉度分桶。滑杆 + 预设可玩。 |
+
+打开方式：`open ~/.claude/skills/token-usage/docs/research/release-potential.html`，或拖进任意浏览器。毕业流程见 [`docs/research/README.md`](./docs/research/README.md)。
+
+---
+
 ## 目录结构
 
 ```
@@ -225,6 +237,9 @@ token-usage/
 ├── dashboard/
 │   ├── server.py                  Stdlib http.server，JSON API + 静态文件
 │   └── static/                    HTML / CSS / 原生 JS 仪表板
+├── docs/
+│   ├── screenshots/               README 截图 + capture.ts
+│   └── research/                  交互式研究探索页（单文件 HTML）
 └── menubar/
     └── app.py                     macOS 菜单栏（rumps，可选）
 ```
