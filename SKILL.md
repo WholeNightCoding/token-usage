@@ -49,7 +49,9 @@ python3 ~/.claude/skills/token-usage/dashboard/server.py
 # flags: --port N, --host ADDR (keep 127.0.0.1 unless asked), --no-open
 ```
 
-Shows: total + billing-equiv + USD estimate (pay-as-you-go) + last-1h rate cards, stacked daily-trend line, per-model doughnut, top-10 projects bar, realtime 1h line (auto 10s refresh), and a model×project detail table. Range selector: Today / Yesterday / This week / This month / 7d / 30d.
+Shows: total + billing-equiv + USD estimate (pay-as-you-go) + last-1h rate cards, stacked daily-trend line, per-model doughnut, top-10 projects bar, realtime 1h line (auto 10s refresh), a **work-efficiency panel** (active hours, % of wall-clock, throughput while actually working, 30-min slot rate distribution, per-day breakdown — answers "how productive am I during the hours I'm at the keyboard?"), and a model×project detail table. Range selector: Today / Yesterday / This week / This month / 7d / 30d.
+
+The efficiency panel reports rates against **active minutes** (minutes that consumed tokens), not wall clock — so a 20-min work block isn't averaged against the 40 idle minutes around it. Also available as a CLI: `python3 ~/.claude/skills/token-usage/scripts/work_efficiency.py [days]`.
 
 Server: same data source as CLI (numbers match), in-memory cached + mtime-invalidated, binds `127.0.0.1` only, no auth.
 

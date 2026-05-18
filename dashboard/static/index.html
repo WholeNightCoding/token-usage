@@ -206,6 +206,78 @@
     </section>
   </section>
 
+  <section class="panel" id="efficiency-panel">
+    <div class="panel-head">
+      <h2>工作效率 <small class="muted" id="efficiency-range-label">— this-week</small></h2>
+      <span class="muted eff-hint">速率按"活跃分钟"算，不按 wall clock — 20 分钟工作只除以 20 分钟，不除以 60</span>
+      <span class="eff-dist-toggle" title="切换 CDF + KDE 两张分布图的速率口径">
+        <button data-eff-mode="raw" class="active">raw</button>
+        <button data-eff-mode="bill">billing-equiv</button>
+      </span>
+    </div>
+
+    <div class="patterns-grid">
+      <div class="pat-card kpi-card">
+        <div class="pat-card-title">概览<span class="help"><span class="help-icon" tabindex="0">?</span><span class="help-tip"><strong>活跃分钟</strong>=任何有 token 消耗的整分钟（本地时区）。<br><strong>活跃速率</strong>=区间总 token ÷ 活跃分钟数 × 60，反映你"真在敲键盘时"的吞吐，不被睡觉/摸鱼的小时稀释。</span></span></div>
+        <div class="kpi-grid">
+          <div class="kpi">
+            <div class="kpi-num" id="eff-active-hours">—</div>
+            <div class="kpi-label">活跃时长</div>
+            <div class="kpi-sub">实际工作小时</div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-num" id="eff-active-pct">—</div>
+            <div class="kpi-label">占 wall-clock</div>
+            <div class="kpi-sub">活跃 / 总时长</div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-num" id="eff-rate-raw">—</div>
+            <div class="kpi-label">活跃速率 raw</div>
+            <div class="kpi-sub">tokens/hr 活跃时</div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-num" id="eff-rate-bill">—</div>
+            <div class="kpi-label">活跃速率 billing</div>
+            <div class="kpi-sub">billing-equiv/hr</div>
+          </div>
+        </div>
+        <div class="kpi-meta muted" id="eff-slot-meta">—</div>
+      </div>
+
+      <div class="pat-card eff-dist-card">
+        <div class="pat-card-title">
+          速率累积分布 (CDF) <span class="muted" id="eff-cdf-mode-label">raw</span>
+          <span class="help"><span class="help-icon" tabindex="0">?</span><span class="help-tip"><strong>累积分布函数</strong>：x 轴是 30 分钟槽位的速率，y 轴是"&le; 这个速率的槽位占总活跃槽位的比例"。<br><br>例如 y=0.5 对应的 x 就是中位速率；曲线越陡说明速率越集中，越平说明分布越分散。</span></span>
+        </div>
+        <div class="chart-box small"><canvas id="chart-eff-cdf"></canvas></div>
+      </div>
+
+      <div class="pat-card eff-dist-card">
+        <div class="pat-card-title">
+          速率密度估计 (KDE) <span class="muted" id="eff-kde-mode-label">raw</span>
+          <span class="help"><span class="help-icon" tabindex="0">?</span><span class="help-tip"><strong>核密度估计</strong>（高斯核 + Silverman 带宽）：CDF 的导数，反映"哪个速率档位的槽位最多"。<br><br>峰值越高/越窄 = 速率越集中；多峰意味着有几种不同的"工作模式"在叠加。<br><br>纵轴归一化到峰值 1，便于读形状。</span></span>
+        </div>
+        <div class="chart-box small"><canvas id="chart-eff-kde"></canvas></div>
+      </div>
+
+      <div class="pat-card eff-perday-card">
+        <div class="pat-card-title">每日明细 <span class="muted">(0 活跃分钟的日子已隐藏)</span></div>
+        <div class="eff-perday-wrap">
+          <table class="eff-perday-table" id="eff-perday">
+            <thead><tr>
+              <th>日期</th>
+              <th class="num">活跃</th>
+              <th class="num">Tokens (raw)</th>
+              <th class="num">Billing-equiv</th>
+              <th class="num">速率 (活跃)</th>
+            </tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <section class="panel">
     <h2>Detail — model × project</h2>
     <div class="detail-toolbar">

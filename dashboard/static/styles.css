@@ -1055,3 +1055,93 @@ td:nth-child(n+3) {
 .interpret-body pre code { background: none; padding: 0; }
 .interpret-body strong { color: var(--text); }
 .interpret-body hr { border: none; border-top: 1px solid var(--border-hairline); margin: 1.5em 0; }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Efficiency panel — work-efficiency view
+   ────────────────────────────────────────────────────────────────────────── */
+#efficiency-panel .panel-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.875rem;
+}
+#efficiency-panel .panel-head h2 { margin-bottom: 0; }
+#efficiency-panel .eff-hint {
+  font-size: 0.74rem;
+  font-style: italic;
+  opacity: 0.85;
+}
+.kpi-meta {
+  font-size: 0.75rem;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.5;
+  margin-top: 0.75rem;
+  padding-top: 0.625rem;
+  border-top: 1px solid var(--border-hairline);
+}
+.eff-perday-card { grid-column: 1 / -1; }
+.eff-perday-wrap {
+  max-height: 360px;
+  overflow-y: auto;
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-input);
+}
+.eff-perday-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+}
+.eff-perday-table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--bg-card);
+  text-align: left;
+  font-weight: 500;
+  color: var(--text-muted);
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--border-hairline);
+  z-index: 1;
+}
+.eff-perday-table th.num,
+.eff-perday-table td.num { text-align: right; }
+.eff-perday-table td {
+  padding: 0.4rem 0.75rem;
+  border-bottom: 1px solid var(--border-hairline);
+}
+.eff-perday-table tbody tr:last-child td { border-bottom: none; }
+.eff-perday-table tbody tr.peak td { background: var(--accent-soft); }
+.eff-perday-table tbody tr.peak td:first-child { font-weight: 600; }
+
+/* Efficiency distribution toggle (raw / billing-equiv) — small inline buttons */
+.eff-dist-toggle {
+  display: inline-flex;
+  gap: 2px;
+  margin-left: auto;
+  padding: 2px;
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-input);
+  background: var(--bg-panel);
+}
+.eff-dist-toggle button {
+  font-family: var(--font-body);
+  font-size: 0.72rem;
+  font-weight: 500;
+  padding: 3px 10px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: calc(var(--radius-input) - 2px);
+  transition: background 120ms, color 120ms;
+}
+.eff-dist-toggle button:hover { color: var(--text); }
+.eff-dist-toggle button.active {
+  background: var(--accent);
+  color: #fff;
+}
+.eff-dist-card .chart-box.small { height: 240px; }

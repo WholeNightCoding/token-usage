@@ -97,6 +97,20 @@ async function fetchDashboard(range, { force = false } = {}) {
   return data;
 }
 
+// ---- efficiency data: same cache pattern, separate endpoint ----
+const EFFICIENCY_TTL_MS = 60_000;
+const efficiencyCache = new Map();  // range -> { data, fetchedAt }
+
+async function fetchEfficiency(range, { force = false } = {}) {
+  const cached = efficiencyCache.get(range);
+  if (!force && cached && (Date.now() - cached.fetchedAt) < EFFICIENCY_TTL_MS) {
+    return cached.data;
+  }
+  const data = await fetchJSON('/api/efficiency?range=' + encodeURIComponent(range));
+  efficiencyCache.set(range, { data, fetchedAt: Date.now() });
+  return data;
+}
+
 // ---- range nav ----
 document.querySelectorAll('#ranges button').forEach(btn => {
   btn.addEventListener('click', () => {
@@ -168,7 +182,7 @@ function applyTheme(name) {
   Chart.defaults.borderColor = s.grid;
   Chart.defaults.font.family = s.font;
 
-  for (const chart of [dailyChart, modelChart, projectChart, realtimeChart]) {
+  for (const chart of [dailyChart, modelChart, projectChart, realtimeChart, cdfChart, kdeChart]) {
     applyChartTheme(chart, s);
   }
 
@@ -190,6 +204,8 @@ function applyTheme(name) {
   } else {
     realtimeChart?.update('none');
   }
+  // Repaint efficiency distribution (CDF/KDE) with new accent color.
+  if (effState.data) renderEffDistribution();
 }
 
 // Bootstrap: apply saved theme synchronously BEFORE any chart is built.
@@ -437,6 +453,216 @@ function setUpdatedAt(iso) {
   $('#updated-at').textContent = `updated ${hh}:${mm}:${ss}`;
 }
 
+// ---- efficiency panel ----
+const effState = { mode: 'raw', data: null };  // mode: 'raw' | 'bill'
+let cdfChart, kdeChart;
+
+// Gaussian KDE on a uniform grid. Bandwidth via Silverman's rule of thumb
+// with an IQR-based scale fallback (more robust to long right tails).
+function computeKDE(values, grid) {
+  if (!values.length || !grid.length) return grid.map(() => 0);
+  const n = values.length;
+  const mean = values.reduce((a, b) => a + b, 0) / n;
+  const variance = values.reduce((a, b) => a + (b - mean) ** 2, 0) / n;
+  const std = Math.sqrt(variance);
+  // values is sorted (server-side), so reuse for IQR
+  const q1 = values[Math.floor(n * 0.25)];
+  const q3 = values[Math.floor(n * 0.75)];
+  const iqrScale = (q3 - q1) / 1.34;
+  const sigma = Math.min(std || iqrScale, iqrScale || std) || 1;
+  const h = 1.06 * sigma * Math.pow(n, -1 / 5);
+  if (h <= 0) return grid.map(() => 0);
+  const norm = 1 / (n * h * Math.sqrt(2 * Math.PI));
+  return grid.map(x => {
+    let sum = 0;
+    for (let i = 0; i < n; i++) {
+      const u = (x - values[i]) / h;
+      sum += Math.exp(-0.5 * u * u);
+    }
+    return sum * norm;
+  });
+}
+
+// Build CDF points: each sorted value at empirical probability i/n.
+// Prepend (0, 0) so the line starts at the origin.
+function buildCDF(sortedValues) {
+  if (!sortedValues.length) return [];
+  const n = sortedValues.length;
+  const pts = [{ x: 0, y: 0 }];
+  for (let i = 0; i < n; i++) pts.push({ x: sortedValues[i], y: (i + 1) / n });
+  return pts;
+}
+
+// Grid spans [0, p99] of values (clip to keep KDE peak visible on screen).
+function makeGrid(sortedValues, npoints = 200) {
+  if (!sortedValues.length) return [];
+  const p99 = sortedValues[Math.min(sortedValues.length - 1, Math.floor(sortedValues.length * 0.99))];
+  const top = Math.max(p99, sortedValues[sortedValues.length - 1] * 0.5, 1);
+  const step = top / (npoints - 1);
+  return Array.from({ length: npoints }, (_, i) => i * step);
+}
+
+function ensureCdfChart() {
+  if (cdfChart) return cdfChart;
+  cdfChart = new Chart($('#chart-eff-cdf'), {
+    type: 'line',
+    data: { datasets: [{ data: [], borderWidth: 2, fill: false, tension: 0, stepped: false }] },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      animation: false,
+      parsing: false,
+      interaction: { mode: 'nearest', intersect: false, axis: 'x' },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            title: items => items[0] ? fmt(items[0].parsed.x) + '/h' : '',
+            label: ctx => `累积概率: ${(ctx.parsed.y * 100).toFixed(1)}%`,
+          },
+        },
+      },
+      scales: {
+        x: {
+          type: 'linear', min: 0,
+          title: { display: true, text: 'tokens / hour' },
+          ticks: { callback: v => fmt(v) },
+        },
+        y: {
+          min: 0, max: 1,
+          title: { display: true, text: '累积概率 P(X ≤ x)' },
+          ticks: { callback: v => Math.round(v * 100) + '%' },
+        },
+      },
+      elements: { point: { radius: 0 } },
+    },
+  });
+  return cdfChart;
+}
+
+function ensureKdeChart() {
+  if (kdeChart) return kdeChart;
+  kdeChart = new Chart($('#chart-eff-kde'), {
+    type: 'line',
+    data: { datasets: [{ data: [], borderWidth: 2, fill: true, tension: 0.25 }] },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      animation: false,
+      parsing: false,
+      interaction: { mode: 'nearest', intersect: false, axis: 'x' },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            title: items => items[0] ? fmt(items[0].parsed.x) + '/h' : '',
+            label: ctx => `相对密度: ${ctx.parsed.y.toFixed(3)}`,
+          },
+        },
+      },
+      scales: {
+        x: {
+          type: 'linear', min: 0,
+          title: { display: true, text: 'tokens / hour' },
+          ticks: { callback: v => fmt(v) },
+        },
+        y: {
+          min: 0, max: 1.05,
+          title: { display: true, text: '相对密度 (峰值=1)' },
+          ticks: { callback: v => v.toFixed(2) },
+        },
+      },
+      elements: { point: { radius: 0 } },
+    },
+  });
+  return kdeChart;
+}
+
+function renderEffDistribution() {
+  const sd = effState.data?.slot_distribution;
+  if (!sd) return;
+  const values = effState.mode === 'bill' ? sd.bill_rates_sorted : sd.raw_rates_sorted;
+  const modeLabel = effState.mode === 'bill' ? 'billing-equiv' : 'raw';
+  const cdfLbl = $('#eff-cdf-mode-label'); if (cdfLbl) cdfLbl.textContent = modeLabel;
+  const kdeLbl = $('#eff-kde-mode-label'); if (kdeLbl) kdeLbl.textContent = modeLabel;
+
+  const cdfPoints = buildCDF(values);
+  const grid = makeGrid(values);
+  const density = computeKDE(values, grid);
+  const peak = density.reduce((m, v) => v > m ? v : m, 0) || 1;
+  const kdePoints = grid.map((x, i) => ({ x, y: density[i] / peak }));
+
+  const accent = chartAccent();
+  const cdf = ensureCdfChart();
+  cdf.data.datasets[0].data = cdfPoints;
+  cdf.data.datasets[0].borderColor = accent;
+  cdf.data.datasets[0].backgroundColor = withAlpha(accent, 0.15);
+  cdf.update('none');
+
+  const kde = ensureKdeChart();
+  kde.data.datasets[0].data = kdePoints;
+  kde.data.datasets[0].borderColor = accent;
+  kde.data.datasets[0].backgroundColor = withAlpha(accent, 0.22);
+  kde.update('none');
+}
+
+// Toggle: raw / billing-equiv
+document.querySelectorAll('.eff-dist-toggle button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const mode = btn.dataset.effMode;
+    if (mode === effState.mode) return;
+    effState.mode = mode;
+    document.querySelectorAll('.eff-dist-toggle button').forEach(b =>
+      b.classList.toggle('active', b.dataset.effMode === mode));
+    renderEffDistribution();
+  });
+});
+
+function renderEffPerDay(rows) {
+  const nonzero = rows.filter(r => r.active_min > 0);
+  const maxRate = Math.max(0, ...nonzero.map(r => r.rate_per_hr));
+  document.querySelector('#eff-perday tbody').innerHTML = nonzero.map(r => {
+    const hrs = r.active_min / 60;
+    const isPeak = maxRate > 0 && r.rate_per_hr === maxRate;
+    return `<tr class="${isPeak ? 'peak' : ''}">
+      <td>${escapeHtml(r.date)}</td>
+      <td class="num">${hrs.toFixed(1)}h</td>
+      <td class="num">${fmt(r.tokens)}</td>
+      <td class="num">${fmt(r.billing_equiv)}</td>
+      <td class="num">${fmt(r.rate_per_hr)}/h</td>
+    </tr>`;
+  }).join('');
+}
+
+function updateEfficiency(data) {
+  effState.data = data;
+  const s = data.summary;
+  $('#eff-active-hours').textContent = s.active_hours.toFixed(1) + 'h';
+  $('#eff-active-pct').textContent   = (s.active_pct * 100).toFixed(1) + '%';
+  $('#eff-rate-raw').textContent     = fmt(s.avg_rate_raw_per_hr) + '/h';
+  $('#eff-rate-bill').textContent    = fmt(s.avg_rate_bill_per_hr) + '/h';
+
+  const sd = data.slot_distribution;
+  $('#eff-slot-meta').innerHTML =
+    `<b>${fmtInt(sd.active_slots)}</b> / ${fmtInt(sd.total_slots)} 个 30 分钟槽有活动`
+    + ` (<b>${(sd.active_slot_pct * 100).toFixed(1)}%</b> 占用率) &nbsp;·&nbsp; `
+    + `中位 <b>${fmt(sd.raw_per_hr.median)}/h</b> (raw) / <b>${fmt(sd.bill_per_hr.median)}/h</b> (bill)`;
+
+  renderEffDistribution();
+  renderEffPerDay(data.per_day);
+
+  $('#efficiency-range-label').textContent = '— ' + (data.range.label || state.range);
+}
+
+async function refreshEfficiency({ force = false } = {}) {
+  const range = state.range;
+  try {
+    const data = await fetchEfficiency(range, { force });
+    if (range !== state.range) return;
+    updateEfficiency(data);
+  } catch (e) {
+    console.error('efficiency fetch failed', e);
+  }
+}
+
 // ---- detail table ----
 const detailState = { rows: [], sortKey: 'total', sortDir: -1, groupBy: 'none', filter: '' };
 
@@ -544,6 +770,9 @@ $('#detail-filter').addEventListener('input', (e) => {
 // ---- orchestration ----
 async function refreshAll({ force = false } = {}) {
   const range = state.range;
+  // Kick off efficiency fetch in parallel — it renders independently and does
+  // its own range-race check, so we don't need to await its result here.
+  refreshEfficiency({ force });
   const data = await fetchDashboard(range, { force });
   // Guard against races: if the user switched range while this was in flight,
   // drop the result.

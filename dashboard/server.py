@@ -20,6 +20,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(os.path.dirname(HERE), "scripts"))
 sys.path.insert(0, os.path.dirname(HERE))
 import token_stats as ts  # noqa: E402
+import work_efficiency as we  # noqa: E402
 from analysis.features import time_series_features  # noqa: E402
 from analysis.seasonal import hour_of_day, day_of_week  # noqa: E402
 from analysis.changepoint import detect as cp_detect  # noqa: E402
@@ -206,6 +207,21 @@ def h_realtime(q):
 def h_detail(q):
     records, _ = records_for(q)
     return {"rows": ts.aggregate_detail(records)}
+
+
+def h_efficiency(q):
+    """Work-efficiency view: tokens-per-active-minute, not tokens-per-wall-hour.
+
+    Reuses the cached records corpus + the same range resolver as other endpoints
+    (range=7d / range=this-week / from=…&to=…).
+    """
+    start, end, label = resolve_qs_range(q)
+    start_utc = start.astimezone(timezone.utc)
+    end_utc = end.astimezone(timezone.utc)
+    records = _filter_by_window(get_all_records(), start_utc, end_utc)
+    result = we.compute_efficiency(records, start, end)
+    result["range"]["label"] = label
+    return result
 
 
 def h_dashboard(q):
@@ -494,6 +510,7 @@ ROUTES = {
     "/api/by-project": h_by_project,
     "/api/realtime":   h_realtime,
     "/api/detail":     h_detail,
+    "/api/efficiency": h_efficiency,
     "/api/dashboard":  h_dashboard,
     "/api/patterns":   h_patterns,
     "/api/interpret":  h_interpret,
@@ -580,6 +597,7 @@ class Handler(BaseHTTPRequestHandler):
 RELOAD_WATCH_FILES = [
     os.path.abspath(__file__),
     os.path.join(os.path.dirname(HERE), "scripts", "token_stats.py"),
+    os.path.join(os.path.dirname(HERE), "scripts", "work_efficiency.py"),
 ]
 
 
