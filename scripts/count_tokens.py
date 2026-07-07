@@ -35,6 +35,9 @@ def resolve_range(args):
     if args.this_month:
         start, end, _ = ts.resolve_named_range("this-month")
         return start, end, f"this-month ({start.strftime('%Y-%m')})"
+    if args.all:
+        start, end, _ = ts.resolve_named_range("all")
+        return start, end, "all-time"
     if args.last:
         start, end, _ = ts.resolve_named_range(args.last)
         return start, end, f"last {args.last}"
@@ -60,6 +63,7 @@ def main():
     g.add_argument("--yesterday", action="store_true")
     g.add_argument("--this-week", dest="this_week", action="store_true")
     g.add_argument("--this-month", dest="this_month", action="store_true")
+    g.add_argument("--all", action="store_true", help="Entire history (all transcripts)")
     g.add_argument("--date", help="Single day, YYYY-MM-DD")
     g.add_argument("--last", help="Rolling window, e.g. 7d / 12h / 30m")
     p.add_argument("--from", dest="from_")

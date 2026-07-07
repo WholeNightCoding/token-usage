@@ -94,7 +94,10 @@ def _range_cache_key(q: dict):
     ROLLING = False
     if "range" in q:
         name = q["range"][0]
-        fixed = {"today", "yesterday", "this-week", "this-month"}
+        # "all" ends at now, but records never carry future timestamps, so its
+        # result only changes when new activity lands — which already flips the
+        # corpus signature. Treat it as fixed.
+        fixed = {"today", "yesterday", "this-week", "this-month", "all"}
         if name not in fixed:
             ROLLING = True
         key = ("named", name)
@@ -107,7 +110,17 @@ def _range_cache_key(q: dict):
 def resolve_qs_range(q: dict):
     """Parse from/to/range query params. Returns (start_local, end_local, label)."""
     if "range" in q:
-        return ts.resolve_named_range(q["range"][0])
+        name = q["range"][0]
+        start, end, label = ts.resolve_named_range(name)
+        if name == "all":
+            # Clamp to the first day with any activity — otherwise by_day /
+            # efficiency iterate dense days from 1970 (20k+ empty rows, and
+            # active-vs-wall-clock percentages lose all meaning).
+            records = get_all_records()
+            if records:
+                first = min(r.t_utc for r in records).astimezone(ts.local_tz())
+                start = first.replace(hour=0, minute=0, second=0, microsecond=0)
+        return start, end, label
     fr = q.get("from", [None])[0]
     to = q.get("to", [None])[0]
     if fr or to:

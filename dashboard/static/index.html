@@ -47,6 +47,15 @@
     <button data-range="this-month">This month</button>
     <button data-range="7d">7d</button>
     <button data-range="30d">30d</button>
+    <button data-range="all">All time</button>
+    <button data-range="custom">Custom…</button>
+    <span class="custom-range" id="global-custom-range" hidden>
+      <input type="date" id="range-from" />
+      <span>—</span>
+      <input type="date" id="range-to" />
+      <button id="range-apply">应用</button>
+      <span id="range-error" class="patterns-error" hidden></span>
+    </span>
   </nav>
 
   <section class="cards">

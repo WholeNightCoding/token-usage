@@ -1,7 +1,9 @@
 'use strict';
 
 const state = {
-  range: 'this-week',
+  range: 'this-week',   // named range, or 'custom' (then customFrom/To apply)
+  customFrom: '',
+  customTo: '',
   intervalSec: 30,
   rtBucketSec: 60,
   rtLabel: '1 min',
@@ -81,46 +83,104 @@ function fetchJSON(url) {
   return fetch(url).then(r => r.json()).finally(loadingEnd);
 }
 
+// Query string + cache key for the currently selected range. 'custom' turns
+// into explicit from/to params — the server resolves those through the same
+// range logic as named ranges.
+function rangeQS() {
+  if (state.range === 'custom') {
+    const p = new URLSearchParams();
+    if (state.customFrom) p.set('from', state.customFrom);
+    if (state.customTo) p.set('to', state.customTo);
+    return p.toString();
+  }
+  return 'range=' + encodeURIComponent(state.range);
+}
+function rangeKey() {
+  return state.range === 'custom'
+    ? `custom:${state.customFrom}:${state.customTo}`
+    : state.range;
+}
+
 // ---- dashboard data: client-side cache keyed by range ----
 // Re-clicking a range served <60s ago returns instantly with zero network.
 // Range buttons also keep the previous panels visible while fresh data loads.
 const DASHBOARD_TTL_MS = 60_000;
-const dashboardCache = new Map();  // range -> { data, fetchedAt }
+const dashboardCache = new Map();  // rangeKey -> { data, fetchedAt }
 
-async function fetchDashboard(range, { force = false } = {}) {
-  const cached = dashboardCache.get(range);
+async function fetchDashboard(key, qs, { force = false } = {}) {
+  const cached = dashboardCache.get(key);
   if (!force && cached && (Date.now() - cached.fetchedAt) < DASHBOARD_TTL_MS) {
     return cached.data;
   }
-  const data = await fetchJSON('/api/dashboard?range=' + encodeURIComponent(range));
-  dashboardCache.set(range, { data, fetchedAt: Date.now() });
+  const data = await fetchJSON('/api/dashboard?' + qs);
+  dashboardCache.set(key, { data, fetchedAt: Date.now() });
   return data;
 }
 
 // ---- efficiency data: same cache pattern, separate endpoint ----
 const EFFICIENCY_TTL_MS = 60_000;
-const efficiencyCache = new Map();  // range -> { data, fetchedAt }
+const efficiencyCache = new Map();  // rangeKey -> { data, fetchedAt }
 
-async function fetchEfficiency(range, { force = false } = {}) {
-  const cached = efficiencyCache.get(range);
+async function fetchEfficiency(key, qs, { force = false } = {}) {
+  const cached = efficiencyCache.get(key);
   if (!force && cached && (Date.now() - cached.fetchedAt) < EFFICIENCY_TTL_MS) {
     return cached.data;
   }
-  const data = await fetchJSON('/api/efficiency?range=' + encodeURIComponent(range));
-  efficiencyCache.set(range, { data, fetchedAt: Date.now() });
+  const data = await fetchJSON('/api/efficiency?' + qs);
+  efficiencyCache.set(key, { data, fetchedAt: Date.now() });
   return data;
 }
 
 // ---- range nav ----
-document.querySelectorAll('#ranges button').forEach(btn => {
+function setActiveRangeBtn(btn) {
+  document.querySelectorAll('#ranges button[data-range]').forEach(b =>
+    b.classList.toggle('active', b === btn));
+}
+
+function showRangeError(msg) {
+  const el = $('#range-error');
+  if (!el) return;
+  el.textContent = msg || '';
+  el.hidden = !msg;
+}
+
+document.querySelectorAll('#ranges button[data-range]').forEach(btn => {
   btn.addEventListener('click', () => {
-    if (state.range === btn.dataset.range) return;
-    document.querySelectorAll('#ranges button').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    state.range = btn.dataset.range;
+    const r = btn.dataset.range;
+    const customRow = $('#global-custom-range');
+    if (r === 'custom') {
+      // Just reveal the pickers; the fetch happens on 应用.
+      setActiveRangeBtn(btn);
+      customRow.hidden = false;
+      const f = $('#range-from'), t = $('#range-to');
+      if (f && !f.value) {
+        const d = new Date(); d.setDate(d.getDate() - 30);
+        f.value = d.toISOString().slice(0, 10);
+      }
+      if (t && !t.value) t.value = new Date().toISOString().slice(0, 10);
+      return;
+    }
+    customRow.hidden = true;
+    showRangeError(null);
+    if (state.range === r) return;
+    setActiveRangeBtn(btn);
+    state.range = r;
     refreshAll();
     scheduleRefresh();
   });
+});
+
+$('#range-apply').addEventListener('click', () => {
+  const f = $('#range-from')?.value || '';
+  const t = $('#range-to')?.value || '';
+  if (!f) { showRangeError('请选择起始日期'); return; }
+  if (t && t < f) { showRangeError('结束日期不能早于起始日期'); return; }
+  showRangeError(null);
+  state.range = 'custom';
+  state.customFrom = f;
+  state.customTo = t;
+  refreshAll();
+  scheduleRefresh();
 });
 
 $('#refresh').addEventListener('click', () => refreshAll({ force: true }));
@@ -187,7 +247,7 @@ function applyTheme(name) {
   }
 
   // Repaint datasets so model colors / accents pick up the new palette.
-  const cached = dashboardCache.get(state.range)?.data;
+  const cached = dashboardCache.get(rangeKey())?.data;
   if (cached) {
     updateDaily(cached.by_day);
     updateModel(cached.by_model);
@@ -653,10 +713,10 @@ function updateEfficiency(data) {
 }
 
 async function refreshEfficiency({ force = false } = {}) {
-  const range = state.range;
+  const key = rangeKey(), qs = rangeQS();
   try {
-    const data = await fetchEfficiency(range, { force });
-    if (range !== state.range) return;
+    const data = await fetchEfficiency(key, qs, { force });
+    if (key !== rangeKey()) return;
     updateEfficiency(data);
   } catch (e) {
     console.error('efficiency fetch failed', e);
@@ -769,14 +829,14 @@ $('#detail-filter').addEventListener('input', (e) => {
 
 // ---- orchestration ----
 async function refreshAll({ force = false } = {}) {
-  const range = state.range;
+  const key = rangeKey(), qs = rangeQS();
   // Kick off efficiency fetch in parallel — it renders independently and does
   // its own range-race check, so we don't need to await its result here.
   refreshEfficiency({ force });
-  const data = await fetchDashboard(range, { force });
+  const data = await fetchDashboard(key, qs, { force });
   // Guard against races: if the user switched range while this was in flight,
   // drop the result.
-  if (range !== state.range) return;
+  if (key !== rangeKey()) return;
   updateSummary(data.summary);
   updateDaily(data.by_day);
   updateModel(data.by_model);

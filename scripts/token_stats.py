@@ -59,6 +59,8 @@ def resolve_named_range(name: str, now: Optional[datetime] = None) -> Tuple[date
         end = start.replace(year=start.year + 1, month=1) if start.month == 12 \
             else start.replace(month=start.month + 1)
         return start, end, "this-month"
+    if name == "all":
+        return datetime(1970, 1, 1, tzinfo=local_tz()), now, "all-time"
     # "7d" / "30d" / "1h" style -> rolling window ending now
     return now - parse_duration(name), now, f"last {name}"
 
