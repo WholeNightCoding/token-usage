@@ -108,6 +108,30 @@ What you get:
 - **Patterns panel** — see below
 - **Detail table** — filterable model × project rows
 
+### macOS menu-bar app (one-click launcher)
+
+Prefer clicking an icon to typing the command? Build a native menu-bar app:
+
+```bash
+bash ~/.claude/skills/token-usage/macos/build_app.sh
+```
+
+This compiles a small Swift app (needs the Xcode Command Line Tools — `swiftc`) and
+installs **Token Usage.app** to `/Applications` (Spotlight-searchable, dockable). It
+lives in the menu bar with a bar-chart glyph:
+
+- **launch** — starts the dashboard server if it isn't up, then opens the browser
+- **打开面板 (Open)** — reopen the dashboard (starts the server first if it's down)
+- **停止服务 (Stop)** — stop the background server; the app stays in the menu bar
+- **退出 (Quit)** — stop the server **and** quit the app, so nothing keeps running
+
+"Is the server up?" is decided by who is `LISTEN`ing on the port (`lsof -iTCP:<port>
+-sTCP:LISTEN`), not by a process-name match — a stale or unrelated process whose
+command line merely contains `server.py` never false-reads as "up". Rerun the build
+script after the server changes or to regenerate the icon. Build is reproducible:
+the python path and skill path are resolved at build time, nothing host-specific is
+baked in silently.
+
 ### Work-efficiency panel
 
 Answers a different question than the Patterns panel: **how productive are you during the hours you're actually at the keyboard?** Wall-clock averages hide this — if you work 20 minutes and idle for 40, dividing tokens by 60 reads as a slow hour. This panel divides by 20.

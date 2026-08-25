@@ -108,6 +108,24 @@ python3 ~/.claude/skills/token-usage/dashboard/server.py
 - **Patterns 面板** — 见下
 - **Detail 表** — 可过滤的 model × project 行
 
+### macOS 菜单栏 app（一键启动）
+
+不想每次敲命令？可以构建一个原生菜单栏 app：
+
+```bash
+bash ~/.claude/skills/token-usage/macos/build_app.sh
+```
+
+它用 `swiftc`（需装 Xcode Command Line Tools）编译一个小 Swift app，装 **Token
+Usage.app** 到 `/Applications`（Spotlight 能搜、可拖进 Dock）。常驻顶部菜单栏，图标是柱状图：
+
+- **启动** — 服务没跑就先拉起，再打开浏览器
+- **打开面板** — 重新打开仪表板（服务没跑会先拉起）
+- **停止服务** — 停掉后台服务，app 仍留在菜单栏
+- **退出** — 停服务 **并** 退出 app，不留任何后台进程
+
+"服务在不在跑"以**谁在端口上 `LISTEN`** 为准（`lsof -iTCP:<port> -sTCP:LISTEN`），不靠进程名匹配——某个命令行里恰好含 `server.py` 字样的无关/残留进程**不会**被误判成"在跑"。服务改了或想换图标就重跑构建脚本。构建可复现：python 路径、skill 路径都在构建时解析，不把任何 host 相关假设静默写死。
+
 ### 工作效率面板
 
 跟 Patterns 面板答的是两个不同的问题：**"我真在敲键盘的时候，吞吐到底有多快？"**。Wall-clock 平均会糊掉这点——如果你工作 20 分钟、idle 40 分钟，token 除以 60 看起来就像慢吞吞的一小时。这个面板除以 20。

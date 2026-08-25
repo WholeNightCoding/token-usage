@@ -32,3 +32,6 @@ dashboard/PLAN.md
 out/
 tmp/
 .gstack/
+
+# Runtime logs (e.g. the menu-bar app's server.log)
+dashboard/*.log
