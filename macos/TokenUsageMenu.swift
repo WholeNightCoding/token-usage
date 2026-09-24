@@ -1,15 +1,20 @@
 // Token Usage — native menu-bar app for the dashboard.
 //
-// Lives in the macOS menu bar (NSStatusItem). On launch it starts the dashboard
-// server if needed and opens the browser; the menu lets you re-open the panel,
-// stop the background server, or quit (quitting also kills the server).
+// Lives in the macOS menu bar (NSStatusItem). On launch (and on every re-launch /
+// dock-reopen) it starts the dashboard server if needed and opens the browser; the
+// menu lets you re-open the panel, stop the background server, or quit (quitting
+// also kills the server).
 //
-// Zero runtime deps. Paths are injected at build time (build_app.sh) so no PATH
-// assumption is baked in silently. Compiled with `swiftc`.
+// Robustness: server liveness is decided by who is LISTENing on the port (lsof),
+// python is resolved at RUNTIME from known locations (so a Homebrew python upgrade
+// can't silently rot a baked-in path), and any startup failure raises a visible
+// alert instead of opening a blank page. Zero runtime deps. Compiled with `swiftc`.
 
 import Cocoa
 
-let PYBIN    = "@@PYBIN@@"
+// PYBIN is only a build-time *hint*; resolvePython() re-checks it and known
+// fallbacks at runtime so an upgraded/removed interpreter can't break launch silently.
+let PYBIN     = "@@PYBIN@@"
 let SERVER_PY = "@@SERVER@@"
 let LOG_FILE  = "@@LOG@@"
 let URL_STR   = "@@URL@@"
@@ -35,6 +40,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { [weak self] _ in
             self?.refreshStatus()
         }
+    }
+
+    // Double-click the app while it's already running (or reopen it) → re-open the
+    // dashboard instead of doing nothing. Fixes "I clicked again and nothing happened".
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        ensureServerAndOpen()
+        return true
     }
 
     func buildMenu() {
@@ -90,9 +102,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         run("/usr/bin/curl", ["-s", "-o", "/dev/null", "--max-time", "1", URL_STR], capture: true) == 0
     }
 
-    func startServer() {
+    // Resolve python at runtime: prefer the stable Homebrew symlink (follows the
+    // current python3 across version bumps), then the build-time hint, then other
+    // common locations. nil if none is executable — caller shows a visible alert.
+    func resolvePython() -> String? {
+        let candidates = [
+            "/opt/homebrew/bin/python3",   // brew stable symlink (arm64)
+            PYBIN,                          // exact interpreter resolved at build time
+            "/usr/local/bin/python3",       // brew (intel)
+            "/usr/bin/python3",             // system / Xcode CLT
+        ]
+        let fm = FileManager.default
+        for c in candidates where fm.isExecutableFile(atPath: c) { return c }
+        return nil
+    }
+
+    func logMarker(_ s: String) {
+        let line = "\n# [app] \(s)\n"
+        if let fh = FileHandle(forWritingAtPath: LOG_FILE) {
+            fh.seekToEndOfFile(); fh.write(line.data(using: .utf8)!); fh.closeFile()
+        } else {
+            try? line.write(toFile: LOG_FILE, atomically: true, encoding: .utf8)
+        }
+    }
+
+    func startServer(_ py: String) {
         if isRunning() { return }
-        let cmd = "/usr/bin/nohup \(shq(PYBIN)) \(shq(SERVER_PY)) --no-open >> \(shq(LOG_FILE)) 2>&1 < /dev/null &"
+        logMarker("start server via \(py)")
+        let cmd = "/usr/bin/nohup \(shq(py)) \(shq(SERVER_PY)) --no-open >> \(shq(LOG_FILE)) 2>&1 < /dev/null &"
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/bin/sh")
         p.arguments = ["-c", cmd]
@@ -100,16 +137,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         p.waitUntilExit()
     }
 
-    func waitUntilUp(_ timeout: Double) {
+    @discardableResult
+    func waitUntilUp(_ timeout: Double) -> Bool {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
-            if pingOK() { return }
+            if pingOK() { return true }
             usleep(300_000)
         }
+        return false
     }
 
     func openBrowser() {
         if let url = URL(string: URL_STR) { NSWorkspace.shared.open(url) }
+    }
+
+    func showAlert(_ text: String) {
+        DispatchQueue.main.async {
+            NSApp.activate(ignoringOtherApps: true)
+            let a = NSAlert()
+            a.messageText = "Token Usage"
+            a.informativeText = text
+            a.alertStyle = .warning
+            a.runModal()
+        }
     }
 
     // MARK: - actions (heavy work off the main thread so the menu stays snappy)
@@ -119,15 +169,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         busy = true
         DispatchQueue.global().async { [weak self] in
             guard let self = self else { return }
+            defer { DispatchQueue.main.async { self.busy = false; self.refreshStatus() } }
             if !self.isRunning() {
-                self.startServer()
-                self.waitUntilUp(12)
+                guard let py = self.resolvePython() else {
+                    self.showAlert("找不到 python3。请安装 Homebrew python 或 Xcode Command Line Tools 后重试。")
+                    return
+                }
+                self.startServer(py)
+                if !self.waitUntilUp(15) {
+                    self.showAlert("仪表板服务启动失败。\n\n请查看日志：\n\(LOG_FILE)")
+                    return   // never open a blank page on failure
+                }
             }
-            DispatchQueue.main.async {
-                self.openBrowser()
-                self.busy = false
-                self.refreshStatus()
-            }
+            DispatchQueue.main.async { self.openBrowser() }
         }
     }
 
@@ -146,7 +200,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func refreshStatus() {
-        statusLine.title = isRunning() ? "● 服务运行中  :8787" : "○ 服务已停止"
+        statusLine.title = isRunning() ? "● 服务运行中  :\(PORT)" : "○ 服务已停止"
     }
 }
 
