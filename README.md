@@ -1,10 +1,10 @@
 # token-usage
 
-> Local-first analytics for your Claude Code token consumption.
+> Local-first analytics for your Claude Code and Codex token consumption.
 
 **English** · [简体中文](./README.zh-CN.md)
 
-A [Claude Code](https://claude.com/claude-code) skill that reads JSONL transcripts under `~/.claude/projects/`, aggregates per model / project / day, and surfaces patterns and AI-generated interpretations through four interfaces:
+A local skill for Claude Code and Codex that reads JSONL transcripts under `~/.claude/projects/` and `${CODEX_HOME:-~/.codex}/sessions/` / `archived_sessions/`, aggregates per source / model / project / day, and surfaces patterns and optional AI-generated interpretations through four interfaces:
 
 - **CLI** — `count_tokens.py` for one-shot reports in any time range
 - **Browser dashboard** — charts + a **Work-efficiency panel** (throughput per active minute, CDF + KDE) + a **Patterns panel** (Markov / ACF / change-point) + an in-page **🤖 AI 解读** button
@@ -12,6 +12,8 @@ A [Claude Code](https://claude.com/claude-code) skill that reads JSONL transcrip
 - **`work_efficiency.py` CLI** — same active-minute throughput analysis in the terminal
 
 Zero dependencies (pure stdlib, no `numpy` / `pandas` / `chart.js` server-side). Chart.js is loaded from CDN by the browser only.
+
+By default both sources are counted. Use `--source claude|codex|all` on the CLIs, or the dashboard's source selector. Codex cache/reasoning subsets are never counted twice; cost and billing-equivalent estimates currently cover Claude only. See [Codex accounting and tests](docs/codex-usage.md).
 
 ---
 
@@ -46,6 +48,8 @@ Claude Code's built-in `~/.claude/stats-cache.json` lags by one day and gives yo
 ```bash
 git clone https://github.com/WholeNightCoding/token-usage ~/.claude/skills/token-usage
 ```
+
+For shared discovery by Codex, clone into `~/.agents/skills/token-usage` instead; invoke scripts from that actual folder. Codex's data directory can be overridden with `--codex-home` or `CODEX_HOME`.
 
 The skill is auto-discovered by Claude Code. Just open Claude Code in any project and ask:
 

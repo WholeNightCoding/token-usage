@@ -191,19 +191,22 @@ def _fmt_short(n) -> str:
     return f"{n:.0f}"
 
 
-def _cli(days: int = 30) -> None:
+def _cli(days: int = 30, source: str = 'all', projects_dir: str = ts.PROJECTS_DIR,
+         codex_home: str = ts.CODEX_HOME) -> None:
     from datetime import timezone
     tz = ts.local_tz()
     end = datetime.now(tz)
     start = end - timedelta(days=days)
     print(f"Scanning transcripts {start:%Y-%m-%d %H:%M} → {end:%Y-%m-%d %H:%M} "
           f"(last {days}d, local tz)\n")
-    records = ts.scan_records(start.astimezone(timezone.utc), end.astimezone(timezone.utc))
+    records = ts.scan_records(start.astimezone(timezone.utc), end.astimezone(timezone.utc),
+                              projects_dir, source=source, codex_home=codex_home)
     if not records:
         print("No records in range.")
         return
 
     data = compute_efficiency(records, start, end)
+    print(f'Source: {source}; billing-equiv columns cover Claude Code only, not Codex.\n')
     s = data["summary"]
     sd = data["slot_distribution"]
 
@@ -284,5 +287,11 @@ def _cli(days: int = 30) -> None:
 
 
 if __name__ == "__main__":
-    d = int(sys.argv[1]) if len(sys.argv) > 1 else 30
-    _cli(d)
+    import argparse
+    parser = argparse.ArgumentParser(description='Work efficiency for Claude Code / Codex')
+    parser.add_argument('days', nargs='?', type=int, default=30)
+    parser.add_argument('--source', choices=ts.SOURCES, default='all')
+    parser.add_argument('--projects-dir', default=ts.PROJECTS_DIR)
+    parser.add_argument('--codex-home', default=ts.CODEX_HOME)
+    args = parser.parse_args()
+    _cli(args.days, args.source, args.projects_dir, args.codex_home)

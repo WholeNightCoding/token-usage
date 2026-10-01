@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Local web dashboard for Claude Code token usage."""
+"""Local web dashboard for Claude Code and Codex token usage."""
 from __future__ import annotations
 
 import argparse
@@ -28,6 +28,8 @@ from analysis.markov import two_state, three_state  # noqa: E402
 
 STATIC_DIR = os.path.join(HERE, "static")
 DEFAULT_PORT = 8787
+PROJECTS_ROOT = ts.PROJECTS_DIR
+CODEX_ROOT = ts.CODEX_HOME
 
 # Whole-corpus records cache: one scan feeds every endpoint. Invalidated by a
 # signature over (path, mtime, size) of all JSONL files — so new activity reloads
@@ -53,7 +55,7 @@ _dashboard_cache: dict = {}
 def _corpus_signature():
     """Cheap fingerprint of all transcripts — just stat calls, no reads."""
     out = []
-    for f in ts.list_transcript_files():
+    for f in ts.list_transcript_files(PROJECTS_ROOT, codex_home=CODEX_ROOT):
         try:
             st = os.stat(f)
             out.append((f, st.st_mtime_ns, st.st_size))
@@ -76,11 +78,24 @@ def get_all_records():
         with _records_lock:
             if _records_cache["signature"] == sig:
                 return _records_cache["records"]
-        records = ts.scan_records(_EPOCH, _FAR_FUTURE)
+        records = ts.scan_records(_EPOCH, _FAR_FUTURE, PROJECTS_ROOT, codex_home=CODEX_ROOT)
         with _records_lock:
             _records_cache["records"] = records
             _records_cache["signature"] = sig
         return records
+
+
+def source_for(q: dict) -> str:
+    source = q.get('source', ['all'])[0]
+    if source not in ts.SOURCES:
+        raise HTTPError(400, {'error': 'source must be all, claude, or codex'})
+    return source
+
+
+def source_records(q: dict):
+    source = source_for(q)
+    records = get_all_records()
+    return records if source == 'all' else [r for r in records if r.source == source]
 
 
 def _range_cache_key(q: dict):
@@ -104,7 +119,7 @@ def _range_cache_key(q: dict):
     else:
         key = ("custom", q.get("from", [""])[0], q.get("to", [""])[0])
     minute = int(time.time()) // 60 if ROLLING else None
-    return key + (minute,)
+    return key + (source_for(q), minute)
 
 
 def resolve_qs_range(q: dict):
@@ -116,7 +131,7 @@ def resolve_qs_range(q: dict):
             # Clamp to the first day with any activity — otherwise by_day /
             # efficiency iterate dense days from 1970 (20k+ empty rows, and
             # active-vs-wall-clock percentages lose all meaning).
-            records = get_all_records()
+            records = source_records(q)
             if records:
                 first = min(r.t_utc for r in records).astimezone(ts.local_tz())
                 start = first.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -140,7 +155,7 @@ def records_for(q: dict):
     start, end, label = resolve_qs_range(q)
     start_utc = start.astimezone(timezone.utc)
     end_utc = end.astimezone(timezone.utc)
-    records = _filter_by_window(get_all_records(), start_utc, end_utc)
+    records = _filter_by_window(source_records(q), start_utc, end_utc)
     return records, {"from": start.isoformat(), "to": end.isoformat(), "label": label}
 
 
@@ -154,7 +169,7 @@ def h_summary(q):
     now_local = datetime.now(ts.local_tz())
     rt_start_utc = (now_local - timedelta(hours=1)).astimezone(timezone.utc)
     now_utc = now_local.astimezone(timezone.utc)
-    rt_records = _filter_by_window(get_all_records(), rt_start_utc, now_utc)
+    rt_records = _filter_by_window(source_records(q), rt_start_utc, now_utc)
     rt_tokens = sum(r.total for r in rt_records)
 
     return {
@@ -162,6 +177,9 @@ def h_summary(q):
         "total": totals["all"],
         "billing_equiv": totals["billing_equiv"],
         "est_usd": round(usd, 2),
+        'unpriced_tokens': totals['unpriced_tokens'],
+        'billing_scope': 'claude',
+        'by_source': ts.aggregate_by_source(records),
         "rate_1h_tokens": rt_tokens,
         "rate_per_min": int(rt_tokens / 60) if rt_tokens else 0,
     }
@@ -191,7 +209,7 @@ def h_realtime(q):
     delta = ts.parse_duration(window)
     start = now_local - delta
     records = _filter_by_window(
-        get_all_records(),
+        source_records(q),
         start.astimezone(timezone.utc),
         now_local.astimezone(timezone.utc),
     )
@@ -231,9 +249,10 @@ def h_efficiency(q):
     start, end, label = resolve_qs_range(q)
     start_utc = start.astimezone(timezone.utc)
     end_utc = end.astimezone(timezone.utc)
-    records = _filter_by_window(get_all_records(), start_utc, end_utc)
+    records = _filter_by_window(source_records(q), start_utc, end_utc)
     result = we.compute_efficiency(records, start, end)
     result["range"]["label"] = label
+    result['billing_supported'] = all(r.source == 'claude' for r in records) and source_for(q) != 'codex'
     return result
 
 
@@ -258,7 +277,7 @@ def h_dashboard(q):
     now_local = datetime.now(ts.local_tz())
     rt_start_utc = (now_local - timedelta(hours=1)).astimezone(timezone.utc)
     rt_records = _filter_by_window(
-        get_all_records(),
+        source_records(q),
         rt_start_utc,
         now_local.astimezone(timezone.utc),
     )
@@ -273,10 +292,14 @@ def h_dashboard(q):
             "total": totals["all"],
             "billing_equiv": totals["billing_equiv"],
             "est_usd": round(usd, 2),
+            'unpriced_tokens': totals['unpriced_tokens'],
+            'billing_scope': 'claude',
             "rate_1h_tokens": rt_tokens,
             "rate_per_min": int(rt_tokens / 60) if rt_tokens else 0,
         },
         "by_day":     ts.aggregate_by_day(records),
+        'source': source_for(q),
+        'by_source': ts.aggregate_by_source(records),
         "by_model":   ts.aggregate_by_model(records),
         "by_project": ts.aggregate_by_project(records, limit=limit),
         "detail":     ts.aggregate_detail(records),
@@ -380,7 +403,7 @@ def _compute_patterns(q):
 
     # --- features / markov window (uses user-chosen bucket) ---
     recs = _filter_by_window(
-        get_all_records(),
+        source_records(q),
         start_local.astimezone(timezone.utc),
         end_local.astimezone(timezone.utc),
     )
@@ -418,7 +441,7 @@ def _compute_patterns(q):
     # --- changepoint: daily totals, dense, over cp_days_eff ending at end_local ---
     cp_start = end_local - timedelta(days=cp_days_eff)
     recs_cp = _filter_by_window(
-        get_all_records(),
+        source_records(q),
         cp_start.astimezone(timezone.utc),
         end_local.astimezone(timezone.utc),
     )
@@ -436,6 +459,7 @@ def _compute_patterns(q):
         "bucket_sec": bucket_sec,
         "cp_days": cp_days_eff,
         "tz": now_local.strftime("%z"),
+        'source': source_for(q),
     }
     if custom_range:
         params["from"] = start_local.date().isoformat()
@@ -477,7 +501,7 @@ def h_interpret(q):
 
     model = os.environ.get("TOKEN_USAGE_LLM_MODEL", "claude-sonnet-4-6")
     prompt = (
-        "你是一个数据分析师。下面是某 Claude Code 用户最近一段时间的 token 用量时序分析结果"
+        "你是一个数据分析师。下面是某用户最近一段时间的 Claude Code / Codex token 用量时序分析结果"
         "（包含描述统计、突发性、自相关、马尔可夫状态转移、变化点检测等指标）。\n\n"
         "请用中文写一份简洁的解读报告（500-800 字），结构如下：\n\n"
         "## TL;DR\n一句话总结用户画像（如「晚高峰个人项目型 / 高黏性 / 强 24h 周期」等）。\n\n"
@@ -586,7 +610,9 @@ class Handler(BaseHTTPRequestHandler):
         url = urlparse(self.path)
         if url.path in ROUTES:
             try:
-                result = ROUTES[url.path](parse_qs(url.query))
+                query = parse_qs(url.query)
+                source_for(query)
+                result = ROUTES[url.path](query)
             except CLIENT_GONE:
                 self.close_connection = True
                 return
@@ -610,6 +636,7 @@ class Handler(BaseHTTPRequestHandler):
 RELOAD_WATCH_FILES = [
     os.path.abspath(__file__),
     os.path.join(os.path.dirname(HERE), "scripts", "token_stats.py"),
+    os.path.join(os.path.dirname(HERE), "scripts", "codex_records.py"),
     os.path.join(os.path.dirname(HERE), "scripts", "work_efficiency.py"),
 ]
 
@@ -644,13 +671,18 @@ def _reload_watcher(poll_sec: float = 1.0):
 
 
 def main():
+    global PROJECTS_ROOT, CODEX_ROOT
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=DEFAULT_PORT)
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--no-open", action="store_true")
+    ap.add_argument('--projects-dir', default=ts.PROJECTS_DIR)
+    ap.add_argument('--codex-home', default=ts.CODEX_HOME)
     ap.add_argument("--no-reload", action="store_true",
                     help="disable auto-reload on Python source changes")
     args = ap.parse_args()
+    PROJECTS_ROOT = os.path.expanduser(args.projects_dir)
+    CODEX_ROOT = os.path.expanduser(args.codex_home)
 
     srv = ThreadingHTTPServer((args.host, args.port), Handler)
     url = f"http://{args.host}:{args.port}/"

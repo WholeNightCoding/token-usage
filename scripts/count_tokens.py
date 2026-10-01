@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Aggregate Claude Code token usage from local transcripts for an arbitrary time range."""
+"""Aggregate Claude Code and Codex tokens from local transcripts."""
 import argparse
 import json
 import os
@@ -57,7 +57,7 @@ def resolve_range(args):
 
 
 def main():
-    p = argparse.ArgumentParser(description="Aggregate Claude Code token usage from local transcripts.")
+    p = argparse.ArgumentParser(description="Aggregate Claude Code and Codex token usage from local transcripts.")
     g = p.add_mutually_exclusive_group()
     g.add_argument("--today", action="store_true")
     g.add_argument("--yesterday", action="store_true")
@@ -70,6 +70,8 @@ def main():
     p.add_argument("--to")
     p.add_argument("--by-day", action="store_true")
     p.add_argument("--projects-dir", default=ts.PROJECTS_DIR)
+    p.add_argument('--source', choices=ts.SOURCES, default='all')
+    p.add_argument('--codex-home', default=ts.CODEX_HOME)
     p.add_argument("--json", action="store_true")
     args = p.parse_args()
 
@@ -77,24 +79,30 @@ def main():
     start_utc = start.astimezone(timezone.utc)
     end_utc = end.astimezone(timezone.utc)
 
-    files = ts.list_transcript_files(args.projects_dir)
+    files = ts.list_transcript_files(args.projects_dir, source=args.source, codex_home=args.codex_home)
     if not files:
-        print(f"No transcript files found under {args.projects_dir}", file=sys.stderr)
+        print(f"No transcript files found for {args.source} (Claude: {args.projects_dir}; Codex: {args.codex_home})", file=sys.stderr)
         sys.exit(1)
 
-    records = ts.scan_records(start_utc, end_utc, projects_dir=args.projects_dir, files=files)
+    records = ts.scan_records(start_utc, end_utc, projects_dir=args.projects_dir, files=files,
+                             source=args.source, codex_home=args.codex_home)
     by_model = ts.aggregate_by_model(records)
     totals = ts.aggregate_totals(records)
     by_day = ts.aggregate_by_day(records) if args.by_day else None
 
     if args.json:
         # Compute billing_equiv as float (not int) to match original output
-        billing_equiv_val = ts.billing_equiv_tokens(totals)
+        billing_equiv_val = sum(ts.billing_equiv_tokens(r) for r in records)
         out = {
             "range": {"start": start.isoformat(), "end": end.isoformat(), "label": label},
+            'source': args.source,
+            'by_source': ts.aggregate_by_source(records),
             "by_model": {m["model"]: {k: m[k] for k in ("in","out","cr","cc","count")} for m in by_model},
             "total": {**{k: totals[k] for k in ("in","out","cr","cc","count")},
-                      "all": totals["all"], "billing_equiv_input": billing_equiv_val},
+                      "all": totals["all"], "billing_equiv_input": billing_equiv_val,
+                      'reasoning_output': totals['reasoning_output'],
+                      'unpriced_tokens': totals['unpriced_tokens'],
+                      'billing_scope': 'claude'},
         }
         if by_day:
             out["by_day"] = {d["date"]: d["per_model"] for d in by_day}
@@ -103,7 +111,7 @@ def main():
 
     print(f"Range: {label}")
     print(f"       {start.isoformat()}  ->  {end.isoformat()}")
-    print(f"Scanned {len(files)} transcript files under {args.projects_dir}")
+    print(f"Scanned {len(files)} transcript files; source: {args.source}")
     print()
     hdr = f"{'MODEL':<38} {'MSGS':>6} {'INPUT':>10} {'OUTPUT':>10} {'CACHE_READ':>14} {'CACHE_CREATE':>14} {'TOTAL':>14}"
     print(hdr)
@@ -114,9 +122,13 @@ def main():
     print(f"{'TOTAL':<38} {totals['count']:>6} {fmt_int(totals['in']):>10} {fmt_int(totals['out']):>10} {fmt_int(totals['cr']):>14} {fmt_int(totals['cc']):>14} {fmt_int(totals['all']):>14}")
     print()
     print(f"Grand total tokens: {fmt_int(totals['all'])}  ({fmt_short(totals['all'])})")
-    billing_equiv_val = ts.billing_equiv_tokens(totals)
+    for source, values in ts.aggregate_by_source(records).items():
+        print(f"  {source}: {fmt_int(values['all'])} tokens")
+    billing_equiv_val = sum(ts.billing_equiv_tokens(r) for r in records)
     print(f"Billing-equiv input tokens (rough): {fmt_int(int(billing_equiv_val))}  ({fmt_short(int(billing_equiv_val))})")
     print("  weights: input=1x, cache_read=0.1x, cache_create_5m=1.25x, cache_create_1h=2x, output=5x")
+    print('  billing scope: Claude Code only; Codex has no configured pricing.')
+    print(f"  Reasoning output (already included in OUTPUT): {fmt_int(totals['reasoning_output'])}")
 
     if by_day:
         print()

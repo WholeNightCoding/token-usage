@@ -1,84 +1,58 @@
 ---
 name: token-usage
-description: Use when the user asks how many Claude Code tokens were consumed — today, yesterday, this week, this month, on a specific date, in a rolling window (last Nh/Nd), or across a custom date/time range — or wants a per-model breakdown with cache-read vs. cache-create split. Also applies when `~/.claude/stats-cache.json` is stale (it only updates through the previous day) or when the user wants a billing-equivalent estimate from local transcripts. Also triggers for visual/browser-based token usage monitoring — "dashboard", "监控板", "面板", "show me in a browser", live rate, per-project breakdown — via the local web UI at `dashboard/server.py`.
+description: Report local Claude Code and Codex token usage for today, a date, a rolling window, or a custom range, with model, project, day, and source breakdowns. Use the local dashboard for visual monitoring and work-efficiency analysis; use the CLI for one-shot questions.
 ---
 
 # Token Usage Reporter
 
-## Overview
+Read local transcripts without modifying them. Default scope is both Claude Code and Codex; use `--source claude` or `--source codex` when the user names one. These are local recorded tokens, not account quota percentages or subscription charges.
 
-Aggregates Claude Code token `usage` records from local JSONL transcripts under `~/.claude/projects/**/*.jsonl` for any time range. More accurate than `~/.claude/stats-cache.json`, which lags by one day.
+## One-shot reports
 
-**Core principle:** parse raw transcripts → filter by `timestamp` → dedupe by `message.id` → sum per model.
-
-## When to Use
-
-Trigger symptoms:
-- "How many tokens did I use today / yesterday / this week / last 6 hours?"
-- "Token usage between 2026-04-01 and 2026-04-15"
-- "Breakdown by model" or "how much was cache vs. new input?"
-- Questions about cost / billing-equivalent tokens for a period
-- `stats-cache.json` doesn't include today's data
-- User wants a **visual dashboard / monitoring page** (e.g. "token 监控板", "打开 token 面板", "in a browser", per-project top-N, live rate) → use the dashboard, not a one-shot CLI table
-
-**Do NOT use for:** message/session counts (those are in `stats-cache.json` — read it directly).
-
-## Quick Reference
-
-Script: `~/.claude/skills/token-usage/scripts/count_tokens.py` (invoke with `python3`).
-
-| Range flag | Scope |
-|---|---|
-| `--today` (default) | Today, local tz |
-| `--yesterday` | Yesterday, local tz |
-| `--this-week` | Mon–Sun of current week |
-| `--this-month` | Current calendar month |
-| `--all` | Entire history (all transcripts) |
-| `--date YYYY-MM-DD` | One specific day |
-| `--last 7d` / `12h` / `30m` | Rolling window ending now |
-| `--from X --to Y` | Explicit range, `YYYY-MM-DD` or `YYYY-MM-DD HH:MM[:SS]` |
-
-Modifiers: `--by-day` (per-day table for multi-day ranges), `--json` (machine-readable), `--projects-dir PATH` (override transcript root).
-
-## Dashboard (visual, browser-based)
-
-Use when the user wants ongoing monitoring, live rate, per-project breakdown, or just a more navigable view than a CLI table.
+Run from this skill's actual directory; do not assume it lives in `~/.claude/skills` or `~/.codex/skills`.
 
 ```bash
-python3 ~/.claude/skills/token-usage/dashboard/server.py
-# default: 127.0.0.1:8787, auto-opens browser
-# flags: --port N, --host ADDR (keep 127.0.0.1 unless asked), --no-open
+python3 scripts/count_tokens.py --today
+python3 scripts/count_tokens.py --source codex --yesterday
+python3 scripts/count_tokens.py --source claude --this-week
+python3 scripts/count_tokens.py --from 2026-10-01 --to 2026-10-07 --by-day
+python3 scripts/count_tokens.py --source codex --last 12h --json
 ```
 
-Shows: total + billing-equiv + USD estimate (pay-as-you-go) + last-1h rate cards, stacked daily-trend line, per-model doughnut, top-10 projects bar, realtime 1h line (auto 10s refresh), a **work-efficiency panel** (active hours, % of wall-clock, throughput while actually working, 30-min slot rate distribution, per-day breakdown — answers "how productive am I during the hours I'm at the keyboard?"), and a model×project detail table. Range selector: Today / Yesterday / This week / This month / 7d / 30d / All time / Custom… (from–to date pickers; All time auto-clamps to the first day with activity).
+Range flags: `--today` (default), `--yesterday`, `--this-week`, `--this-month`, `--all`, `--date YYYY-MM-DD`, `--last 7d|12h|30m`, or `--from X --to Y`. Dates/times use local timezone. JSON retains the existing `by_model` and `total` fields, and adds `by_source`, reasoning-output and pricing-scope metadata.
 
-The efficiency panel reports rates against **active minutes** (minutes that consumed tokens), not wall clock — so a 20-min work block isn't averaged against the 40 idle minutes around it. Also available as a CLI: `python3 ~/.claude/skills/token-usage/scripts/work_efficiency.py [days]`.
+Sources:
 
-Server: same data source as CLI (numbers match), in-memory cached + mtime-invalidated, binds `127.0.0.1` only, no auth.
+- Claude Code: `~/.claude/projects/**/*.jsonl`; override with `--projects-dir`.
+- Codex CLI/Desktop: `${CODEX_HOME:-~/.codex}/sessions/**/*.jsonl` and `archived_sessions/**/*.jsonl`; override with `--codex-home` (the home containing both folders).
 
-**Do NOT launch the dashboard just to answer a one-shot CLI-style question.** Use `count_tokens.py` instead for "how many tokens yesterday" — it's faster and fits better in chat.
+## Dashboard
 
-## Canonical Example
+Use when the user asks for a monitoring page, charts, live rates or navigable analysis. Do not launch it for a one-shot token-count question.
 
 ```bash
-python3 ~/.claude/skills/token-usage/scripts/count_tokens.py --from 2026-04-01 --to 2026-04-21 --by-day
+python3 dashboard/server.py
+# 127.0.0.1:8787; --no-open, --port N, --projects-dir PATH, --codex-home PATH
 ```
 
-Output columns: `MODEL | MSGS | INPUT | OUTPUT | CACHE_READ | CACHE_CREATE | TOTAL`, plus grand total and a **billing-equivalent input tokens** estimate using weights `input=1×, cache_read=0.1×, cache_create_5m=1.25×, cache_create_1h=2×, output=5×`. CACHE_CREATE in the table is the 5m+1h sum; the billing-equiv splits them out via the per-record `cache_creation.ephemeral_1h_input_tokens` field.
+The source selector (全部 / Claude Code / Codex) applies to totals, trends, models, projects, realtime, efficiency and Patterns. The dashboard caches the corpus and invalidates it when transcript files change. Keep it bound to loopback unless the user requests another binding.
 
-## Reading the output
+Other reports use the same scanner:
 
-- **Scope**: covers Claude Code only. Anthropic API direct calls, Claude.ai web/desktop usage are NOT in these transcripts — totals will be lower than your actual Anthropic billing.
-- **Sub-agent dedup is automatic**: same `message.id` appearing in parent + sub-agent transcripts is merged via field-wise max. The numbers you see are post-dedup; no double-counting.
-- `<synthetic>` model rows are cache-only compaction events; always sum to zero, safe to ignore.
-- `cache_create_5m` is priced at 1.25× input, `cache_create_1h` at 2×; billing-equiv splits them via `cache_creation.ephemeral_1h_input_tokens` per record.
+```bash
+python3 scripts/work_efficiency.py 7 --source codex
+python3 scripts/analyze.py --days 7 --source codex --html report.html
+```
 
-(Internals — dedup-by-max, UTC handling, subagent scanning — see CLAUDE.md.)
+The existing optional AI interpretation button uses the local `claude` CLI, regardless of the selected statistics source; ordinary statistics require only Python's standard library.
 
-## Common Mistakes
+## Interpret correctly
 
-- **Reporting `cache_read` as new-input cost.** It's 0.1× in billing; cite billing-equiv when cost is the question.
-- **Using `stats-cache.json` for "today".** It only updates through the previous day.
-- **Pre-converting dates to UTC.** The script handles local-tz; pass the user's date as-is.
-- **Filtering by file mtime.** Transcripts append throughout a session; always filter by the JSONL `timestamp` field.
+- Claude Code: dedupe parent/subagent and streaming snapshots by message ID with field-wise maxima; cache creation retains the 5-minute/1-hour split.
+- Codex: prefer per-response `token_usage_record` when present, dedupe response IDs, and suppress mirrored `token_count` events. Older rollouts use cumulative-counter differences, reading preceding counters before applying a time window. Repeated snapshots, counter resets and inherited fork history are handled separately.
+- Codex cached input is a subset of input; the INPUT column shows the non-cached remainder. Reasoning output is a subset of OUTPUT. Never add either subset again to total tokens.
+- Amounts and billing-equivalent values use the existing Claude pricing configuration only. Codex tokens are marked unpriced. Never apply Claude rates to Codex, or present the API estimate as the user's subscription bill. Mixed-source efficiency disables the billing view and retains raw throughput.
+- Missing/deleted/local-unrecorded history cannot be reconstructed. Cloud conversations without local rollout files are outside the report.
+- Filter by event timestamp, not file modification date. Do not use `stats-cache.json` to answer today's usage.
 
+For format/dedup details and validation commands, see [docs/codex-usage.md](docs/codex-usage.md).

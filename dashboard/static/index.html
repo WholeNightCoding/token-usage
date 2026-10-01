@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Claude Code Token Usage</title>
+  <title>Claude Code / Codex Token Usage</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link
@@ -14,8 +14,15 @@
 </head>
 <body>
   <header>
-    <h1>Claude Code Token Usage</h1>
+    <h1>Claude Code / Codex Token Usage</h1>
     <div class="controls">
+      <label>统计来源：
+        <select id="source">
+          <option value="all">全部</option>
+          <option value="claude">Claude Code</option>
+          <option value="codex">Codex</option>
+        </select>
+      </label>
       <span id="loading" class="loading" hidden>⏳ 加载中…</span>
       <span id="updated-at" class="updated-at"></span>
       <label class="theme-label">Theme:
@@ -60,10 +67,13 @@
 
   <section class="cards">
     <div class="card"><div class="label">Total</div><div class="value" id="card-total">—</div></div>
-    <div class="card"><div class="label">Billing-equiv</div><div class="value" id="card-billing">—</div></div>
-    <div class="card" id="card-usd-wrap"><div class="label">Est $ (pay-as-you-go)</div><div class="value" id="card-usd">—</div><div class="hint">Hide if on Max/Team plan</div></div>
+    <div class="card"><div class="label">Claude 计费折算</div><div class="value" id="card-billing">—</div></div>
+    <div class="card" id="card-usd-wrap"><div class="label">Claude 金额估算</div><div class="value" id="card-usd">—</div><div class="hint">按现有 API 计价配置；非订阅账单</div></div>
     <div class="card"><div class="label">Last 1h rate</div><div class="value" id="card-rate">—</div><div class="hint">tokens / min</div></div>
   </section>
+
+  <p id="source-totals" class="muted" role="status"></p>
+  <p id="usage-note" class="muted">读取本机 Claude Code 与 Codex 记录。Codex 缓存属于输入量，推理属于输出量；总量只计算一次。</p>
 
   <section class="panel">
     <h2>Daily trend</h2>
