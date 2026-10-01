@@ -105,6 +105,57 @@ class DashboardSourceTests(unittest.TestCase):
         self.assertEqual(data['summary']['total'], 240)
         self.assertEqual(data['summary']['rate_1h_tokens'], 120)
 
+    def test_concurrent_requests_share_a_scan_when_logs_change_while_waiting(self):
+        entered = threading.Event()
+        waiter_ready = threading.Event()
+        release = threading.Event()
+        scan = server.ts.scan_records
+        signature = server._corpus_signature
+        results, errors = [], []
+
+        def blocked_scan(*args, **kwargs):
+            entered.set()
+            if not release.wait(5):
+                raise RuntimeError('scan was not released')
+            return scan(*args, **kwargs)
+
+        def observed_signature():
+            result = signature()
+            if threading.current_thread().name == 'waiting-reader':
+                waiter_ready.set()
+            return result
+
+        def read():
+            try:
+                results.append(server.get_all_records())
+            except Exception as error:
+                errors.append(error)
+
+        with patch.object(server.ts, 'scan_records', side_effect=blocked_scan) as scans, \
+                patch.object(server, '_corpus_signature', side_effect=observed_signature):
+            first = threading.Thread(target=read, name='first-reader')
+            second = threading.Thread(target=read, name='waiting-reader')
+            first.start()
+            try:
+                self.assertTrue(entered.wait(5))
+                self.write('sessions/extra.jsonl', [meta(), context(), response('extra')])
+                second.start()
+                self.assertTrue(waiter_ready.wait(5))
+            finally:
+                release.set()
+                first.join(5)
+                if second.ident is not None:
+                    second.join(5)
+            self.assertEqual(errors, [])
+            self.assertEqual(len(results), 2)
+            self.assertEqual(scans.call_count, 1)
+            self.assertIs(results[0], results[1])
+            self.assertEqual(sum(r.total for r in results[0]), 252)
+
+        # A later request must still discover new activity, not freeze the cache.
+        self.write('sessions/later.jsonl', [meta(), context(), response('later')])
+        self.assertEqual(sum(r.total for r in server.get_all_records()), 372)
+
 
 if __name__ == '__main__':
     unittest.main()

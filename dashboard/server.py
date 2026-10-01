@@ -67,6 +67,8 @@ def _corpus_signature():
 
 def get_all_records():
     """Return the full record list, scanning disk only when files change."""
+    with _records_lock:
+        observed_records = _records_cache["records"]
     sig = _corpus_signature()
     # Fast path: cache hit, no scan needed.
     with _records_lock:
@@ -76,7 +78,12 @@ def get_all_records():
     # wait, then see the populated cache via the inner re-check.
     with _scan_lock:
         with _records_lock:
-            if _records_cache["signature"] == sig:
+            # Logs can grow while this request waits. Share the scan that
+            # finished during the wait instead of queuing another full read
+            # for each slightly different signature. Later requests still
+            # check disk and refresh normally.
+            if (_records_cache["signature"] == sig or
+                    _records_cache["records"] is not observed_records):
                 return _records_cache["records"]
         records = ts.scan_records(_EPOCH, _FAR_FUTURE, PROJECTS_ROOT, codex_home=CODEX_ROOT)
         with _records_lock:
