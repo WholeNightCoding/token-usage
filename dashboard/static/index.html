@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="en" data-theme="apple">
+<html lang="zh-CN" data-theme="apple">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Claude Code Token Usage</title>
+  <title>Claude Code / Codex Token Usage</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link
@@ -14,8 +14,15 @@
 </head>
 <body>
   <header>
-    <h1>Claude Code Token Usage</h1>
+    <h1>Claude Code / Codex Token Usage</h1>
     <div class="controls">
+      <label>统计来源：
+        <select id="source">
+          <option value="all">全部</option>
+          <option value="claude">Claude Code</option>
+          <option value="codex">Codex</option>
+        </select>
+      </label>
       <span id="loading" class="loading" hidden>⏳ 加载中…</span>
       <span id="updated-at" class="updated-at"></span>
       <label class="theme-label">Theme:
@@ -58,12 +65,22 @@
     </span>
   </nav>
 
-  <section class="cards">
-    <div class="card"><div class="label">Total</div><div class="value" id="card-total">—</div></div>
-    <div class="card"><div class="label">Billing-equiv</div><div class="value" id="card-billing">—</div></div>
-    <div class="card" id="card-usd-wrap"><div class="label">Est $ (pay-as-you-go)</div><div class="value" id="card-usd">—</div><div class="hint">Hide if on Max/Team plan</div></div>
-    <div class="card"><div class="label">Last 1h rate</div><div class="value" id="card-rate">—</div><div class="hint">tokens / min</div></div>
+  <section class="cards" aria-label="用量概览">
+    <div class="card card-total"><div class="label">总用量</div><div class="value" id="card-total">—</div><div class="hint" id="card-total-hint">tokens · 当前时间范围与来源</div></div>
+    <div class="card"><div class="label">Claude Code</div><div class="value" id="card-claude">—</div><div class="hint" id="card-claude-hint">tokens · 当前时间范围</div></div>
+    <div class="card"><div class="label">Codex</div><div class="value" id="card-codex">—</div><div class="hint" id="card-codex-hint">tokens · 当前时间范围</div></div>
+    <div class="card"><div class="label">最近一小时速率</div><div class="value" id="card-rate">—</div><div class="hint" id="card-rate-hint">tokens / 分钟 · 当前来源</div></div>
   </section>
+
+  <details class="billing-details" id="card-usd-wrap">
+    <summary>Claude 费用参考</summary>
+    <div class="billing-values">
+      <span>API 金额估算 <strong id="card-usd">—</strong></span>
+      <span>计费等效 token <strong id="card-billing">—</strong></span>
+    </div>
+    <p>按当前时间范围的 Claude API 价格估算，不含 Codex，不是订阅账单。</p>
+  </details>
+  <p id="usage-note" class="muted">仅统计本机记录。Codex 缓存包含在输入量中，推理包含在输出量中，均不重复累加。</p>
 
   <section class="panel">
     <h2>Daily trend</h2>

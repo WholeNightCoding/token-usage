@@ -8,7 +8,7 @@ This file is auto-loaded by Claude Code into its context whenever you open this 
 
 ## What is this project
 
-`token-usage` is a Claude Code skill that does local-first analytics on your own Claude Code transcripts (`~/.claude/projects/**/*.jsonl`). Three interfaces:
+`token-usage` is a shared skill for local-first analytics on Claude Code transcripts (`~/.claude/projects/**/*.jsonl`) and Codex rollouts (`CODEX_HOME` or `~/.codex`, sessions and archived_sessions). Three interfaces:
 
 - **CLI** — `scripts/count_tokens.py`, `scripts/analyze.py`
 - **Browser dashboard** — `dashboard/server.py` + static frontend
@@ -26,7 +26,7 @@ These are non-negotiable. Don't suggest changes that violate them without explic
 
 1. **Pure stdlib only.** No `numpy`, `pandas`, `scipy`, `requests`, `flask`, `fastapi`, `pyyaml`, etc. on the Python side. The dashboard frontend uses Chart.js loaded from a CDN — that's the only external runtime dependency in the whole project.
 2. **Zero install steps.** A user who clones the repo into `~/.claude/skills/token-usage/` should be able to run any script with `python3 scripts/foo.py` immediately. No `pip install -r requirements.txt`. No `npm install`.
-3. **Don't touch `~/.claude/projects/**/*.jsonl`.** Read-only, ever. Those are the user's transcripts.
+3. **Don't touch Claude or Codex transcript files.** Read-only, ever. Those are the user's transcripts.
 4. **Chinese UI strings stay Chinese.** Don't "translate" 用法画像 / 突发型 / 晚高峰 etc. to English. The user-facing language is Chinese; code/comments are English.
 5. **No telemetry, no analytics, no outbound calls.** Only outbound call permitted: the local `claude` CLI subprocess from the AI 解读 button (server.py `h_interpret`).
 
@@ -40,6 +40,8 @@ README.md                   English landing page (GitHub default).
 README.zh-CN.md             Chinese landing page.
 
 scripts/
+  codex_records.py          Codex request/counter parsing, mirrors and fork-history dedup.
+  transcript_index.py       Disposable per-file SQLite/memory parsing cache for dashboard.
   token_stats.py            CORE — JSONL parsing, dedup-by-message-id (field-wise max),
                             time-window filtering, bucket aggregation, billing-equiv
                             (5m/1h ephemeral cache split). Imported by everything else.
@@ -73,6 +75,10 @@ docs/
 ```
 
 **The single source of truth for token math is `scripts/token_stats.py`.** Don't reinvent dedup or billing-equiv logic anywhere else — import from there.
+
+Codex cache is included in input and reasoning is included in output. Never add these subsets again. Pricing/billing-equivalent values cover Claude only; expose the unpriced Codex scope. See [Codex accounting](docs/codex-usage.md). Run `python3 -m unittest discover -s tests -v` for regression tests.
+
+Dashboard persistence is a rebuildable statistics cache, not a transcript store. Keep per-file identities and raw counter candidates until global dedup; caching only final per-file totals breaks copied/forked/mirrored records. See [index lifecycle](docs/performance.md) and [ADR 001](docs/decisions/001-transcript-index.md).
 
 ---
 

@@ -1,10 +1,10 @@
 # token-usage
 
-> Claude Code token 用量本地化分析工具。
+> Claude Code 与 Codex token 用量本地化分析工具。
 
 [English](./README.md) · 简体中文
 
-一个 [Claude Code](https://claude.com/claude-code) skill —— 直接读 `~/.claude/projects/` 下的 JSONL transcript，按 model / project / day 聚合，并通过四个界面把数据变成可读的洞察：
+一个同时支持 Claude Code 与 Codex 的本地 skill —— 读取 `~/.claude/projects/` 和 `${CODEX_HOME:-~/.codex}/sessions/`、`archived_sessions/` 下的 JSONL，按来源 / model / project / day 聚合，并通过四个界面把数据变成可读的洞察：
 
 - **CLI** — `count_tokens.py` 任意时间区间一次性出报告
 - **浏览器仪表板** — 图表 + **工作效率面板**（按活跃分钟算吞吐 + CDF/KDE 分布图）+ **Patterns 面板**（Markov / ACF / 变化点检测）+ 内嵌 **🤖 AI 解读** 按钮
@@ -12,6 +12,8 @@
 - **`work_efficiency.py` CLI** — 同样的活跃分钟吞吐分析，纯终端输出
 
 零 pip 依赖（纯 stdlib，连 numpy/pandas 都没有）。Chart.js 只在浏览器端通过 CDN 加载。
+
+默认统计两者；命令行可用 `--source claude|codex|all`，面板可选“全部 / Claude Code / Codex”。Codex 缓存和推理子集只记一次，金额与计费折算目前只包含 Claude。详见 [Codex 统计口径与验证](docs/codex-usage.md)。
 
 ---
 
@@ -46,6 +48,8 @@ Claude Code 自带的 `~/.claude/stats-cache.json` 有两个不爽的地方：**
 ```bash
 git clone https://github.com/WholeNightCoding/token-usage ~/.claude/skills/token-usage
 ```
+
+希望 Codex 发现共享 skill 时，可安装到 `~/.agents/skills/token-usage`；脚本从实际安装目录执行。Codex 数据目录可通过 `--codex-home` 或 `CODEX_HOME` 指定。
 
 Claude Code 会自动发现这个 skill。打开任意项目，问它：
 
@@ -87,6 +91,9 @@ python3 ~/.claude/skills/token-usage/scripts/count_tokens.py \
 
 # JSON 输出（管道用）
 python3 ~/.claude/skills/token-usage/scripts/count_tokens.py --json
+
+# 只看 Codex
+python3 ~/.claude/skills/token-usage/scripts/count_tokens.py --source codex --today
 ```
 
 输出列：`MODEL | MSGS | INPUT | OUTPUT | CACHE_READ | CACHE_CREATE | TOTAL`，外加总计和按权重 `input=1×, cache_read=0.1×, cache_create_5m=1.25×, cache_create_1h=2×, output=5×` 算的「计费等效输入 token」估算。
@@ -98,9 +105,12 @@ python3 ~/.claude/skills/token-usage/dashboard/server.py
 # → 自动打开 http://127.0.0.1:8787/
 ```
 
+仪表板用本机统计索引复用历史解析结果，重启后也保留，只重新解析变化的文件。首次建立索引仍需读取历史。可以用 `--cache-dir PATH` 或 `--no-cache` 控制磁盘缓存，详见[性能与索引生命周期](docs/performance.md)。
+
 包含：
 
-- **4 张 KPI 卡** — 总量 / 计费等效 / 美元估算 / 最近 1 小时速率
+- **4 张概览卡** — 总用量 / Claude Code / Codex / 最近一小时速率，标明筛选范围和来源占比；未纳入筛选的来源显示“—”，不误显示为零。
+- **Claude 费用参考** — 展开查看 API 金额和计费等效 token 的估算，不含 Codex，也不是订阅账单。
 - **Daily trend** — 按 model 堆叠的柱状图，柱顶标总计
 - **By model / Top 10 projects** — 甜甜圈 + 柱状
 - **Realtime** — 最近 N 小时折线图，每 10 秒自动刷新，桶大小可选（1 min → 4 hour）

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Local web dashboard for Claude Code token usage."""
+"""Local web dashboard for Claude Code and Codex token usage."""
 from __future__ import annotations
 
 import argparse
@@ -13,6 +13,7 @@ import threading
 import time
 import webbrowser
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
@@ -20,6 +21,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(os.path.dirname(HERE), "scripts"))
 sys.path.insert(0, os.path.dirname(HERE))
 import token_stats as ts  # noqa: E402
+from transcript_index import TranscriptIndex, default_cache_dir  # noqa: E402
 import work_efficiency as we  # noqa: E402
 from analysis.features import time_series_features  # noqa: E402
 from analysis.seasonal import hour_of_day, day_of_week  # noqa: E402
@@ -28,15 +30,18 @@ from analysis.markov import two_state, three_state  # noqa: E402
 
 STATIC_DIR = os.path.join(HERE, "static")
 DEFAULT_PORT = 8787
+PROJECTS_ROOT = ts.PROJECTS_DIR
+CODEX_ROOT = ts.CODEX_HOME
 
-# Whole-corpus records cache: one scan feeds every endpoint. Invalidated by a
-# signature over (path, mtime, size) of all JSONL files — so new activity reloads
-# automatically, but switching ranges never rescans disk.
+# Whole-corpus snapshots feed every endpoint. A file-index underneath reuses
+# unchanged parsing; only changed transcripts are reopened, and persisted
+# entries survive restarts. Cross-file accounting still runs in token_stats.
 _EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
 _FAR_FUTURE = datetime(9999, 1, 1, tzinfo=timezone.utc)
 
 _records_lock = threading.Lock()
 _records_cache: dict = {"signature": None, "records": []}
+_transcript_index = TranscriptIndex()
 # Separate lock so concurrent cold-cache callers don't all rescan in parallel
 # (thundering herd). With the GIL, parallel scan_records calls serialize anyway
 # but waste CPU repeating the same work — the page issues 3 fetches at once on
@@ -53,10 +58,10 @@ _dashboard_cache: dict = {}
 def _corpus_signature():
     """Cheap fingerprint of all transcripts — just stat calls, no reads."""
     out = []
-    for f in ts.list_transcript_files():
+    for f in ts.list_transcript_files(PROJECTS_ROOT, codex_home=CODEX_ROOT):
         try:
             st = os.stat(f)
-            out.append((f, st.st_mtime_ns, st.st_size))
+            out.append((f, st.st_mtime_ns, st.st_size, st.st_dev, st.st_ino, st.st_ctime_ns))
         except OSError:
             continue
     out.sort()
@@ -65,6 +70,8 @@ def _corpus_signature():
 
 def get_all_records():
     """Return the full record list, scanning disk only when files change."""
+    with _records_lock:
+        observed_records = _records_cache["records"]
     sig = _corpus_signature()
     # Fast path: cache hit, no scan needed.
     with _records_lock:
@@ -74,13 +81,34 @@ def get_all_records():
     # wait, then see the populated cache via the inner re-check.
     with _scan_lock:
         with _records_lock:
-            if _records_cache["signature"] == sig:
+            # Logs can grow while this request waits. Share the scan that
+            # finished during the wait instead of queuing another full read
+            # for each slightly different signature. Later requests still
+            # check disk and refresh normally.
+            if (_records_cache["signature"] == sig or
+                    _records_cache["records"] is not observed_records):
                 return _records_cache["records"]
-        records = ts.scan_records(_EPOCH, _FAR_FUTURE)
+        paths = [entry[0] for entry in sig]
+        records = ts.scan_records(_EPOCH, _FAR_FUTURE, PROJECTS_ROOT, files=paths,
+                                  codex_home=CODEX_ROOT, file_cache=_transcript_index)
+        _transcript_index.prune(paths)
         with _records_lock:
             _records_cache["records"] = records
             _records_cache["signature"] = sig
         return records
+
+
+def source_for(q: dict) -> str:
+    source = q.get('source', ['all'])[0]
+    if source not in ts.SOURCES:
+        raise HTTPError(400, {'error': 'source must be all, claude, or codex'})
+    return source
+
+
+def source_records(q: dict):
+    source = source_for(q)
+    records = get_all_records()
+    return records if source == 'all' else [r for r in records if r.source == source]
 
 
 def _range_cache_key(q: dict):
@@ -104,10 +132,10 @@ def _range_cache_key(q: dict):
     else:
         key = ("custom", q.get("from", [""])[0], q.get("to", [""])[0])
     minute = int(time.time()) // 60 if ROLLING else None
-    return key + (minute,)
+    return key + (source_for(q), minute)
 
 
-def resolve_qs_range(q: dict):
+def resolve_qs_range(q: dict, corpus=None):
     """Parse from/to/range query params. Returns (start_local, end_local, label)."""
     if "range" in q:
         name = q["range"][0]
@@ -116,7 +144,7 @@ def resolve_qs_range(q: dict):
             # Clamp to the first day with any activity — otherwise by_day /
             # efficiency iterate dense days from 1970 (20k+ empty rows, and
             # active-vs-wall-clock percentages lose all meaning).
-            records = get_all_records()
+            records = corpus if corpus is not None else source_records(q)
             if records:
                 first = min(r.t_utc for r in records).astimezone(ts.local_tz())
                 start = first.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -136,25 +164,27 @@ def _filter_by_window(records, start_utc: datetime, end_utc: datetime):
     return [r for r in records if start_utc <= r.t_utc < end_utc]
 
 
-def records_for(q: dict):
-    start, end, label = resolve_qs_range(q)
+def records_for(q: dict, corpus=None):
+    corpus = source_records(q) if corpus is None else corpus
+    start, end, label = resolve_qs_range(q, corpus)
     start_utc = start.astimezone(timezone.utc)
     end_utc = end.astimezone(timezone.utc)
-    records = _filter_by_window(get_all_records(), start_utc, end_utc)
+    records = _filter_by_window(corpus, start_utc, end_utc)
     return records, {"from": start.isoformat(), "to": end.isoformat(), "label": label}
 
 
 # --- handlers ---
 
 def h_summary(q):
-    records, rng = records_for(q)
+    corpus = source_records(q)
+    records, rng = records_for(q, corpus)
     totals = ts.aggregate_totals(records)
     usd = ts.usd_estimate(records)
 
     now_local = datetime.now(ts.local_tz())
     rt_start_utc = (now_local - timedelta(hours=1)).astimezone(timezone.utc)
     now_utc = now_local.astimezone(timezone.utc)
-    rt_records = _filter_by_window(get_all_records(), rt_start_utc, now_utc)
+    rt_records = _filter_by_window(corpus, rt_start_utc, now_utc)
     rt_tokens = sum(r.total for r in rt_records)
 
     return {
@@ -162,6 +192,9 @@ def h_summary(q):
         "total": totals["all"],
         "billing_equiv": totals["billing_equiv"],
         "est_usd": round(usd, 2),
+        'unpriced_tokens': totals['unpriced_tokens'],
+        'billing_scope': 'claude',
+        'by_source': ts.aggregate_by_source(records),
         "rate_1h_tokens": rt_tokens,
         "rate_per_min": int(rt_tokens / 60) if rt_tokens else 0,
     }
@@ -191,7 +224,7 @@ def h_realtime(q):
     delta = ts.parse_duration(window)
     start = now_local - delta
     records = _filter_by_window(
-        get_all_records(),
+        source_records(q),
         start.astimezone(timezone.utc),
         now_local.astimezone(timezone.utc),
     )
@@ -228,12 +261,14 @@ def h_efficiency(q):
     Reuses the cached records corpus + the same range resolver as other endpoints
     (range=7d / range=this-week / from=…&to=…).
     """
-    start, end, label = resolve_qs_range(q)
+    corpus = source_records(q)
+    start, end, label = resolve_qs_range(q, corpus)
     start_utc = start.astimezone(timezone.utc)
     end_utc = end.astimezone(timezone.utc)
-    records = _filter_by_window(get_all_records(), start_utc, end_utc)
+    records = _filter_by_window(corpus, start_utc, end_utc)
     result = we.compute_efficiency(records, start, end)
     result["range"]["label"] = label
+    result['billing_supported'] = all(r.source == 'claude' for r in records) and source_for(q) != 'codex'
     return result
 
 
@@ -251,14 +286,15 @@ def h_dashboard(q):
         if hit is not None:
             return hit
 
-    records, rng = records_for(q)
+    corpus = source_records(q)
+    records, rng = records_for(q, corpus)
     totals = ts.aggregate_totals(records)
     usd = ts.usd_estimate(records)
 
     now_local = datetime.now(ts.local_tz())
     rt_start_utc = (now_local - timedelta(hours=1)).astimezone(timezone.utc)
     rt_records = _filter_by_window(
-        get_all_records(),
+        corpus,
         rt_start_utc,
         now_local.astimezone(timezone.utc),
     )
@@ -273,10 +309,14 @@ def h_dashboard(q):
             "total": totals["all"],
             "billing_equiv": totals["billing_equiv"],
             "est_usd": round(usd, 2),
+            'unpriced_tokens': totals['unpriced_tokens'],
+            'billing_scope': 'claude',
             "rate_1h_tokens": rt_tokens,
             "rate_per_min": int(rt_tokens / 60) if rt_tokens else 0,
         },
         "by_day":     ts.aggregate_by_day(records),
+        'source': source_for(q),
+        'by_source': ts.aggregate_by_source(records),
         "by_model":   ts.aggregate_by_model(records),
         "by_project": ts.aggregate_by_project(records, limit=limit),
         "detail":     ts.aggregate_detail(records),
@@ -379,8 +419,9 @@ def _compute_patterns(q):
         start_local = now_local - timedelta(days=days)
 
     # --- features / markov window (uses user-chosen bucket) ---
+    corpus = source_records(q)
     recs = _filter_by_window(
-        get_all_records(),
+        corpus,
         start_local.astimezone(timezone.utc),
         end_local.astimezone(timezone.utc),
     )
@@ -418,7 +459,7 @@ def _compute_patterns(q):
     # --- changepoint: daily totals, dense, over cp_days_eff ending at end_local ---
     cp_start = end_local - timedelta(days=cp_days_eff)
     recs_cp = _filter_by_window(
-        get_all_records(),
+        corpus,
         cp_start.astimezone(timezone.utc),
         end_local.astimezone(timezone.utc),
     )
@@ -436,6 +477,7 @@ def _compute_patterns(q):
         "bucket_sec": bucket_sec,
         "cp_days": cp_days_eff,
         "tz": now_local.strftime("%z"),
+        'source': source_for(q),
     }
     if custom_range:
         params["from"] = start_local.date().isoformat()
@@ -477,7 +519,7 @@ def h_interpret(q):
 
     model = os.environ.get("TOKEN_USAGE_LLM_MODEL", "claude-sonnet-4-6")
     prompt = (
-        "你是一个数据分析师。下面是某 Claude Code 用户最近一段时间的 token 用量时序分析结果"
+        "你是一个数据分析师。下面是某用户最近一段时间的 Claude Code / Codex token 用量时序分析结果"
         "（包含描述统计、突发性、自相关、马尔可夫状态转移、变化点检测等指标）。\n\n"
         "请用中文写一份简洁的解读报告（500-800 字），结构如下：\n\n"
         "## TL;DR\n一句话总结用户画像（如「晚高峰个人项目型 / 高黏性 / 强 24h 周期」等）。\n\n"
@@ -586,7 +628,9 @@ class Handler(BaseHTTPRequestHandler):
         url = urlparse(self.path)
         if url.path in ROUTES:
             try:
-                result = ROUTES[url.path](parse_qs(url.query))
+                query = parse_qs(url.query)
+                source_for(query)
+                result = ROUTES[url.path](query)
             except CLIENT_GONE:
                 self.close_connection = True
                 return
@@ -610,6 +654,8 @@ class Handler(BaseHTTPRequestHandler):
 RELOAD_WATCH_FILES = [
     os.path.abspath(__file__),
     os.path.join(os.path.dirname(HERE), "scripts", "token_stats.py"),
+    os.path.join(os.path.dirname(HERE), "scripts", "codex_records.py"),
+    os.path.join(os.path.dirname(HERE), "scripts", "transcript_index.py"),
     os.path.join(os.path.dirname(HERE), "scripts", "work_efficiency.py"),
 ]
 
@@ -644,13 +690,23 @@ def _reload_watcher(poll_sec: float = 1.0):
 
 
 def main():
+    global PROJECTS_ROOT, CODEX_ROOT, _transcript_index
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=DEFAULT_PORT)
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--no-open", action="store_true")
+    ap.add_argument('--projects-dir', default=ts.PROJECTS_DIR)
+    ap.add_argument('--codex-home', default=ts.CODEX_HOME)
+    ap.add_argument('--cache-dir', help='directory for disposable local statistics index')
+    ap.add_argument('--no-cache', action='store_true', help='use memory cache only')
     ap.add_argument("--no-reload", action="store_true",
                     help="disable auto-reload on Python source changes")
     args = ap.parse_args()
+    PROJECTS_ROOT = os.path.expanduser(args.projects_dir)
+    CODEX_ROOT = os.path.expanduser(args.codex_home)
+    cache_dir = (None if args.no_cache else Path(args.cache_dir).expanduser()
+                 if args.cache_dir else default_cache_dir(PROJECTS_ROOT, CODEX_ROOT))
+    _transcript_index = TranscriptIndex(cache_dir)
 
     srv = ThreadingHTTPServer((args.host, args.port), Handler)
     url = f"http://{args.host}:{args.port}/"
@@ -665,6 +721,10 @@ def main():
         srv.serve_forever()
     except KeyboardInterrupt:
         print("\nStopping.")
+    finally:
+        srv.server_close()
+        with _scan_lock:
+            _transcript_index.close()
 
 
 if __name__ == "__main__":

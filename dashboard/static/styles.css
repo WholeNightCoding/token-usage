@@ -166,6 +166,8 @@ body::before {
 
 header {
   display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.5rem;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 1rem;
@@ -191,6 +193,7 @@ h2 {
 
 .controls {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.875rem;
   align-items: center;
   font-size: 0.8rem;
@@ -198,6 +201,7 @@ h2 {
 
 .controls label {
   display: flex;
+  white-space: nowrap;
   align-items: center;
   gap: 0.4rem;
   color: var(--text-muted);
@@ -260,12 +264,13 @@ nav#ranges {
 
 .cards {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 0.875rem;
   margin-bottom: 1rem;
 }
 
 .card {
+  min-width: 0;
   border: 1px solid var(--border);
   border-radius: var(--radius-card);
   padding: 0.875rem 1rem;
@@ -278,10 +283,10 @@ nav#ranges {
   color: var(--text-muted);
   font-weight: 500;
   letter-spacing: 0.02em;
-  text-transform: uppercase;
 }
 
 .card .value {
+  overflow-wrap: anywhere;
   font-family: var(--font-mono);
   font-size: 1.7rem;
   font-weight: 600;
@@ -289,6 +294,20 @@ nav#ranges {
   letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
 }
+
+.card-total .value { color: var(--accent); }
+
+.billing-details {
+  margin-bottom: 0.75rem;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}
+.billing-details[hidden] { display: none; }
+.billing-details summary { cursor: pointer; padding: 0.25rem 0; width: fit-content; }
+.billing-details summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.billing-values { display: flex; flex-wrap: wrap; gap: 0.5rem 1.5rem; margin-top: 0.5rem; }
+.billing-values strong { color: var(--text); font-family: var(--font-mono); font-weight: 600; }
+.billing-details p { margin: 0.4rem 0 0; }
 
 .card .hint {
   font-size: 0.7rem;
@@ -413,9 +432,17 @@ td:nth-child(n+3) {
 
 @keyframes pulse { 0%,100% { opacity: 0.7 } 50% { opacity: 1 } }
 
+@media (max-width: 900px) {
+  .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
 @media (max-width: 720px) {
   .row { grid-template-columns: 1fr; }
   header { flex-direction: column; gap: 0.75rem; align-items: flex-start; }
+}
+
+@media (max-width: 380px) {
+  .cards { grid-template-columns: 1fr; }
 }
 
 /* ============================================================

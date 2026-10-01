@@ -86,7 +86,7 @@ def densify_daily(
 
 def main():
     p = argparse.ArgumentParser(
-        description="Analyze Claude Code token usage with time-series patterns."
+        description="Analyze Claude Code and Codex token usage with time-series patterns."
     )
     p.add_argument("--days", type=int, default=7,
                    help="Window size (days) for features/seasonal/markov (default 7)")
@@ -96,6 +96,8 @@ def main():
                    help="Window size (days) for change-point detection (default 30)")
     p.add_argument("--projects-dir", dest="projects_dir", default=ts.PROJECTS_DIR,
                    help="Override transcripts directory")
+    p.add_argument('--source', choices=ts.SOURCES, default='all')
+    p.add_argument('--codex-home', default=ts.CODEX_HOME)
     p.add_argument("--html", help="Write HTML report to this path")
     p.add_argument("--markdown", help="Write Markdown report to this path")
     p.add_argument("--json", dest="json_path", help="Write JSON to this path")
@@ -108,7 +110,7 @@ def main():
     start_local = now_local - timedelta(days=args.days)
     cp_start_local = now_local - timedelta(days=args.cp_days)
 
-    files = ts.list_transcript_files(args.projects_dir)
+    files = ts.list_transcript_files(args.projects_dir, source=args.source, codex_home=args.codex_home)
     if not files:
         print(f"No transcript files found under {args.projects_dir}", file=sys.stderr)
         sys.exit(1)
@@ -119,6 +121,7 @@ def main():
         now_local.astimezone(timezone.utc),
         projects_dir=args.projects_dir,
         files=files,
+        source=args.source, codex_home=args.codex_home,
     )
     if args.days <= args.cp_days:
         start_utc = start_local.astimezone(timezone.utc)
@@ -129,6 +132,7 @@ def main():
             now_local.astimezone(timezone.utc),
             projects_dir=args.projects_dir,
             files=files,
+            source=args.source, codex_home=args.codex_home,
         )
 
     bucketed = ts.aggregate_by_bucket(records, bucket_sec)
@@ -146,6 +150,7 @@ def main():
         ts_values=ts_values,
         values=values,
     )
+    patterns['params']['source'] = args.source
 
     wrote_anything = False
     if args.html:

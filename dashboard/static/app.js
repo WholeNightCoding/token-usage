@@ -1,6 +1,7 @@
 'use strict';
 
 const state = {
+  source: 'all',
   range: 'this-week',   // named range, or 'custom' (then customFrom/To apply)
   customFrom: '',
   customTo: '',
@@ -91,15 +92,25 @@ function rangeQS() {
     const p = new URLSearchParams();
     if (state.customFrom) p.set('from', state.customFrom);
     if (state.customTo) p.set('to', state.customTo);
+    p.set('source', state.source);
     return p.toString();
   }
-  return 'range=' + encodeURIComponent(state.range);
+  return 'range=' + encodeURIComponent(state.range) + '&source=' + state.source;
 }
 function rangeKey() {
   return state.range === 'custom'
-    ? `custom:${state.customFrom}:${state.customTo}`
-    : state.range;
+    ? `${state.source}:custom:${state.customFrom}:${state.customTo}`
+    : `${state.source}:${state.range}`;
 }
+
+$('#source').addEventListener('change', () => {
+  state.source = $('#source').value;
+  refreshAll();
+  refreshRealtime();
+  refreshPatterns(patternsParamsFromUI());
+  $('#interpret-dismiss')?.click();
+  lastPatternsQS = '';
+});
 
 // ---- dashboard data: client-side cache keyed by range ----
 // Re-clicking a range served <60s ago returns instantly with zero network.
@@ -444,11 +455,33 @@ function formatRtTooltipTitle(iso) {
 }
 
 // ---- panel updaters (reuse chart instances) ----
-function updateSummary(s) {
-  $('#card-total').textContent   = fmt(s.total);
+function updateSummary(data) {
+  const s = data.summary;
+  const source = data.source;
+  const sourceLabel = source === 'all' ? '全部来源' : source === 'claude' ? 'Claude Code' : 'Codex';
+  const rangeLabels = {
+    today: '今天', yesterday: '昨天', 'this-week': '本周', 'this-month': '本月',
+    '7d': '近 7 天', '30d': '近 30 天', all: '全部历史', custom: '自定义日期',
+  };
+  $('#card-total').textContent = fmt(s.total);
+  $('#card-total').title = `${fmtInt(s.total)} tokens`;
+  $('#card-total-hint').textContent = `tokens · ${rangeLabels[state.range]} · ${sourceLabel}`;
+  for (const provider of ['claude', 'codex']) {
+    const included = source === 'all' || source === provider;
+    const total = data.by_source[provider].all;
+    const value = $(`#card-${provider}`);
+    value.textContent = included ? fmt(total) : '—';
+    value.title = included ? `${fmtInt(total)} tokens` : '未纳入当前筛选';
+    $(`#card-${provider}-hint`).textContent = !included ? '未纳入当前筛选'
+      : total === 0 ? '该时间段暂无记录'
+      : `tokens · 占当前总量 ${(total / s.total * 100).toFixed(1)}%`;
+  }
+  $('#card-rate').textContent = fmtInt(s.rate_per_min);
+  $('#card-rate-hint').textContent = `tokens / 分钟 · ${sourceLabel}`;
+  $('#card-usd-wrap').hidden = source === 'codex';
   $('#card-billing').textContent = fmt(s.billing_equiv);
-  $('#card-usd').textContent     = '$' + (s.est_usd ?? 0).toFixed(2);
-  $('#card-rate').textContent    = fmtInt(s.rate_per_min);
+  $('#card-billing').title = `${fmtInt(s.billing_equiv)} 计费等效 token`;
+  $('#card-usd').textContent = '$' + (s.est_usd ?? 0).toFixed(2);
 }
 
 function updateDaily(rows) {
@@ -686,7 +719,7 @@ function renderEffPerDay(rows) {
       <td>${escapeHtml(r.date)}</td>
       <td class="num">${hrs.toFixed(1)}h</td>
       <td class="num">${fmt(r.tokens)}</td>
-      <td class="num">${fmt(r.billing_equiv)}</td>
+      <td class="num">${effState.data?.billing_supported === false ? '—' : fmt(r.billing_equiv)}</td>
       <td class="num">${fmt(r.rate_per_hr)}/h</td>
     </tr>`;
   }).join('');
@@ -694,17 +727,24 @@ function renderEffPerDay(rows) {
 
 function updateEfficiency(data) {
   effState.data = data;
+  if (data.billing_supported === false) effState.mode = 'raw';
+  document.querySelectorAll('.eff-dist-toggle button').forEach(btn => {
+    btn.disabled = btn.dataset.effMode === 'bill' && data.billing_supported === false;
+    btn.classList.toggle('active', btn.dataset.effMode === effState.mode);
+    btn.title = btn.disabled ? 'Codex 尚未配置计价，请查看 raw 用量' : '';
+  });
   const s = data.summary;
   $('#eff-active-hours').textContent = s.active_hours.toFixed(1) + 'h';
   $('#eff-active-pct').textContent   = (s.active_pct * 100).toFixed(1) + '%';
   $('#eff-rate-raw').textContent     = fmt(s.avg_rate_raw_per_hr) + '/h';
-  $('#eff-rate-bill').textContent    = fmt(s.avg_rate_bill_per_hr) + '/h';
+  $('#eff-rate-bill').textContent    = data.billing_supported === false ? '—' : fmt(s.avg_rate_bill_per_hr) + '/h';
 
   const sd = data.slot_distribution;
   $('#eff-slot-meta').innerHTML =
     `<b>${fmtInt(sd.active_slots)}</b> / ${fmtInt(sd.total_slots)} 个 30 分钟槽有活动`
     + ` (<b>${(sd.active_slot_pct * 100).toFixed(1)}%</b> 占用率) &nbsp;·&nbsp; `
-    + `中位 <b>${fmt(sd.raw_per_hr.median)}/h</b> (raw) / <b>${fmt(sd.bill_per_hr.median)}/h</b> (bill)`;
+    + `中位 <b>${fmt(sd.raw_per_hr.median)}/h</b> (raw)`
+    + (data.billing_supported === false ? ' · Codex 未配置计价，计费视图不可用' : ` / <b>${fmt(sd.bill_per_hr.median)}/h</b> (bill)`);
 
   renderEffDistribution();
   renderEffPerDay(data.per_day);
@@ -837,7 +877,7 @@ async function refreshAll({ force = false } = {}) {
   // Guard against races: if the user switched range while this was in flight,
   // drop the result.
   if (key !== rangeKey()) return;
-  updateSummary(data.summary);
+  updateSummary(data);
   updateDaily(data.by_day);
   updateModel(data.by_model);
   updateProject(data.by_project);
@@ -864,9 +904,11 @@ function fmtWindowMinutes(min) {
 }
 
 async function refreshRealtime() {
+  const source = state.source;
   const windowMin = computeRealtimeWindowMinutes();
-  const url = `/api/realtime?bucket=${state.rtBucketSec}&window=${windowMin}m`;
+  const url = `/api/realtime?bucket=${state.rtBucketSec}&window=${windowMin}m&source=${source}`;
   const res = await fetchJSON(url);
+  if (source !== state.source) return;
   updateRealtime(res.rows);
   const lbl = $('#realtime-range-label');
   if (lbl) lbl.textContent = `— last ${fmtWindowMinutes(windowMin)}, ${state.rtLabel} buckets (auto 10s)`;
@@ -887,11 +929,12 @@ let cpChart;
 const patternsCacheMap = new Map();   // qs -> { data, fetchedAt }
 const PATTERNS_TTL_MS = 60_000;
 let lastPatternsQS = '';              // remember the most recent successful query string
+let patternsRequestId = 0;
 
 function patternsParamsFromUI() {
   const range = $('#patterns-range')?.value || '7d';
   const bucket = $('#patterns-bucket')?.value || '1800';
-  const params = { bucket };
+  const params = { bucket, source: state.source };
   if (range === 'custom') {
     const f = $('#patterns-from')?.value || '';
     const t = $('#patterns-to')?.value || '';
@@ -946,28 +989,33 @@ async function fetchPatterns(force = false, params = null) {
 }
 
 async function refreshPatterns(params = null) {
+  const requestId = ++patternsRequestId;
+  const source = state.source;
+  params = { ...(params || patternsParamsFromUI()), source };
   const panel = $('#patterns-panel');
   const applyBtn = $('#patterns-apply');
   panel?.classList.add('is-loading');
-  let prevApplyText = null;
   if (applyBtn) {
-    prevApplyText = applyBtn.textContent;
     applyBtn.disabled = true;
     applyBtn.textContent = '⏳ 分析中…';
   }
   try {
     const data = await fetchPatterns(true, params);
+    if (source !== state.source || requestId !== patternsRequestId) return;
     renderPatterns(data);
     const lbl = $('#patterns-summary-label');
     if (lbl && data?.params) lbl.textContent = patternsLabelFromParams(data.params);
   } catch (e) {
+    if (requestId !== patternsRequestId) return;
     console.warn('patterns load failed:', e);
     showPatternsError(e?.message || String(e));
   } finally {
-    panel?.classList.remove('is-loading');
-    if (applyBtn) {
-      applyBtn.disabled = false;
-      applyBtn.textContent = prevApplyText || '应用';
+    if (requestId === patternsRequestId) {
+      panel?.classList.remove('is-loading');
+      if (applyBtn) {
+        applyBtn.disabled = false;
+        applyBtn.textContent = '应用';
+      }
     }
   }
 }
@@ -1440,6 +1488,7 @@ function setInterpretActions({ copy, regen, dismiss }) {
 }
 
 async function runInterpret() {
+  const source = state.source;
   if (interpretInFlight) return;
   const btn = $('#patterns-interpret');
   const body = $('#interpret-body');
@@ -1457,8 +1506,11 @@ async function runInterpret() {
   $('#interpret-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
   try {
-    const res = await fetch('/api/interpret' + qs);
+    const query = new URLSearchParams(qs);
+    query.set('source', source);
+    const res = await fetch('/api/interpret?' + query);
     const data = await res.json();
+    if (source !== state.source) return;
     if (!res.ok || data.error) {
       const msg = data.error || `HTTP ${res.status}`;
       const hint = data.hint ? `<br><small class="muted">${renderMarkdown(data.hint)}</small>` : '';
