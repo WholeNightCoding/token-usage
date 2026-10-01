@@ -138,7 +138,7 @@ class DashboardSourceTests(unittest.TestCase):
             first.start()
             try:
                 self.assertTrue(entered.wait(5))
-                self.write('sessions/extra.jsonl', [meta(), context(), response('extra')])
+                self.write('sessions/a.jsonl', [meta(), context(), response(), response('extra')])
                 second.start()
                 self.assertTrue(waiter_ready.wait(5))
             finally:
@@ -155,6 +155,22 @@ class DashboardSourceTests(unittest.TestCase):
         # A later request must still discover new activity, not freeze the cache.
         self.write('sessions/later.jsonl', [meta(), context(), response('later')])
         self.assertEqual(sum(r.total for r in server.get_all_records()), 372)
+
+    def test_changed_file_does_not_reopen_unchanged_transcripts(self):
+        server.get_all_records()
+        changed = self.codex / 'sessions/a.jsonl'
+        self.write('sessions/a.jsonl', [meta(), context(), response(),
+                                      response('new-response')])
+        from builtins import open as real_open
+        opened = set()
+        def observed_open(path, *args, **kwargs):
+            if str(path).endswith('.jsonl'):
+                opened.add(Path(path))
+            return real_open(path, *args, **kwargs)
+        with patch('builtins.open', side_effect=observed_open):
+            records = server.get_all_records()
+        self.assertEqual(sum(r.total for r in records), 252)
+        self.assertEqual(opened, {changed})
 
 
 if __name__ == '__main__':

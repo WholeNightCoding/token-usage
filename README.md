@@ -102,6 +102,8 @@ python3 ~/.claude/skills/token-usage/dashboard/server.py
 # → opens http://127.0.0.1:8787/ in your default browser
 ```
 
+The dashboard keeps a rebuildable local statistics index across restarts and reparses only changed files. The first build reads all history. Use `--cache-dir PATH` or `--no-cache` to control disk caching; see [performance and cache lifecycle](docs/performance.md).
+
 What you get:
 
 - **4 KPI cards** — total / billing-equiv / USD estimate / last-1h rate

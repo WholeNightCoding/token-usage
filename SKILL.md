@@ -35,7 +35,7 @@ python3 dashboard/server.py
 # 127.0.0.1:8787; --no-open, --port N, --projects-dir PATH, --codex-home PATH
 ```
 
-The source selector (全部 / Claude Code / Codex) applies to totals, trends, models, projects, realtime, efficiency and Patterns. The dashboard caches the corpus and invalidates it when transcript files change. Keep it bound to loopback unless the user requests another binding.
+The source selector (全部 / Claude Code / Codex) applies to totals, trends, models, projects, realtime, efficiency and Patterns. The dashboard reuses a local per-file statistics index across refreshes and restarts; only changed transcripts are reparsed. The first index build still reads all history. Use `--cache-dir PATH` to choose its directory or `--no-cache` for memory only; see [index lifecycle](docs/performance.md). Keep it bound to loopback unless the user requests another binding.
 
 Other reports use the same scanner:
 

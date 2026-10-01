@@ -117,11 +117,11 @@ def _read_file(path):
     return primaries, fallbacks
 
 
-def scan_events(files):
+def scan_events(files, *, read_file=None):
     primary = []
     fallback = []
     for path in files:
-        requests, counters = _read_file(path)
+        requests, counters = (read_file or _read_file)(path)
         primary.extend(requests)
         fallback.extend(counters)
     checkpoints = defaultdict(list)

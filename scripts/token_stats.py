@@ -92,6 +92,59 @@ def _project_slug(path: str, projects_dir: str) -> str:
     return parts[0] if parts and parts[0] != "." else "(root)"
 
 
+def read_claude_file(path: str, projects_dir: str,
+                     start_utc: Optional[datetime] = None,
+                     end_utc: Optional[datetime] = None) -> List[Tuple[tuple | None, Record]]:
+    """Parse one file; keep IDs for cross-file dedup in scan_records."""
+    rows = []
+    slug = _project_slug(path, projects_dir)
+    try:
+        fp = open(path, "r", encoding="utf-8", errors="ignore")
+    except OSError:
+        return []
+    with fp:
+        for line in fp:
+            if '"usage"' not in line:
+                continue
+            try:
+                obj = json.loads(line)
+            except ValueError:
+                continue
+            if not isinstance(obj, dict):
+                continue
+            ts = obj.get("timestamp", "")
+            if not isinstance(ts, str) or not ts:
+                continue
+            try:
+                t = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+            except ValueError:
+                continue
+            if t.tzinfo is None:
+                t = t.replace(tzinfo=timezone.utc)
+            if start_utc is not None and not (start_utc <= t < end_utc):
+                continue
+            msg = obj.get("message") or {}
+            if not isinstance(msg, dict):
+                continue
+            usage = msg.get("usage") or obj.get("usage")
+            if not isinstance(usage, dict) or not usage:
+                continue
+            model = msg.get("model") or obj.get("model") or "unknown"
+            cc_breakdown = usage.get("cache_creation") or {}
+            rec = Record(
+                t_utc=t, model=model, project=slug,
+                input_=usage.get("input_tokens", 0) or 0,
+                output=usage.get("output_tokens", 0) or 0,
+                cache_read=usage.get("cache_read_input_tokens", 0) or 0,
+                cache_create=usage.get("cache_creation_input_tokens", 0) or 0,
+                cache_create_1h=cc_breakdown.get("ephemeral_1h_input_tokens", 0) or 0,
+            )
+            mid = msg.get("id") or obj.get("uuid")
+            mid = ('claude', mid) if mid else None
+            rows.append((mid, rec))
+    return rows
+
+
 def scan_records(
     start_utc: datetime,
     end_utc: datetime,
@@ -100,6 +153,7 @@ def scan_records(
     *,
     source: str = 'all',
     codex_home: str = CODEX_HOME,
+    file_cache=None,
 ) -> List[Record]:
     """Scan all JSONL transcripts, dedupe by message id, filter by time window.
 
@@ -121,67 +175,29 @@ def scan_records(
     for f in files:
         if source == 'codex' or f in codex_files:
             continue
-        slug = _project_slug(f, projects_dir)
-        try:
-            fp = open(f, "r", encoding="utf-8", errors="ignore")
-        except OSError:
-            continue
-        with fp:
-            for line in fp:
-                if '"usage"' not in line:
-                    continue
-                try:
-                    obj = json.loads(line)
-                except ValueError:
-                    continue
-                if not isinstance(obj, dict):
-                    continue
-                ts = obj.get("timestamp", "")
-                if not isinstance(ts, str) or not ts:
-                    continue
-                try:
-                    t = datetime.fromisoformat(ts.replace("Z", "+00:00"))
-                except ValueError:
-                    continue
-                if t.tzinfo is None:
-                    t = t.replace(tzinfo=timezone.utc)
-                if not (start_utc <= t < end_utc):
-                    continue
-                msg = obj.get("message") or {}
-                if not isinstance(msg, dict):
-                    continue
-                usage = msg.get("usage") or obj.get("usage")
-                if not isinstance(usage, dict) or not usage:
-                    continue
-                model = msg.get("model") or obj.get("model") or "unknown"
-                cc_breakdown = usage.get("cache_creation") or {}
-                rec = Record(
-                    t_utc=t, model=model, project=slug,
-                    input_=usage.get("input_tokens", 0) or 0,
-                    output=usage.get("output_tokens", 0) or 0,
-                    cache_read=usage.get("cache_read_input_tokens", 0) or 0,
-                    cache_create=usage.get("cache_creation_input_tokens", 0) or 0,
-                    cache_create_1h=cc_breakdown.get("ephemeral_1h_input_tokens", 0) or 0,
+        entries = (file_cache.read_claude(f, projects_dir) if file_cache is not None
+                   else read_claude_file(f, projects_dir, start_utc, end_utc))
+        for mid, rec in entries:
+            if not (start_utc <= rec.t_utc < end_utc):
+                continue
+            if not mid:
+                no_id.append(rec)
+                continue
+            prior = by_id.get(mid)
+            if prior is None:
+                by_id[mid] = rec
+            else:
+                by_id[mid] = Record(
+                    t_utc=prior.t_utc, model=prior.model, project=prior.project,
+                    input_=max(prior.input_, rec.input_),
+                    output=max(prior.output, rec.output),
+                    cache_read=max(prior.cache_read, rec.cache_read),
+                    cache_create=max(prior.cache_create, rec.cache_create),
+                    cache_create_1h=max(prior.cache_create_1h, rec.cache_create_1h),
                 )
-                mid = msg.get("id") or obj.get("uuid")
-                mid = ('claude', mid) if mid else None
-                if not mid:
-                    no_id.append(rec)
-                    continue
-                prior = by_id.get(mid)
-                if prior is None:
-                    by_id[mid] = rec
-                else:
-                    by_id[mid] = Record(
-                        t_utc=prior.t_utc, model=prior.model, project=prior.project,
-                        input_=max(prior.input_, rec.input_),
-                        output=max(prior.output, rec.output),
-                        cache_read=max(prior.cache_read, rec.cache_read),
-                        cache_create=max(prior.cache_create, rec.cache_create),
-                        cache_create_1h=max(prior.cache_create_1h, rec.cache_create_1h),
-                    )
     if source != 'claude':
-        for key, values in scan_events(codex_files):
+        reader = file_cache.read_codex if file_cache is not None else None
+        for key, values in scan_events(codex_files, read_file=reader):
             rec = Record(**values)
             if not (start_utc <= rec.t_utc < end_utc):
                 continue

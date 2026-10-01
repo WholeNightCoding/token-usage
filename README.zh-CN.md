@@ -105,6 +105,8 @@ python3 ~/.claude/skills/token-usage/dashboard/server.py
 # → 自动打开 http://127.0.0.1:8787/
 ```
 
+仪表板用本机统计索引复用历史解析结果，重启后也保留，只重新解析变化的文件。首次建立索引仍需读取历史。可以用 `--cache-dir PATH` 或 `--no-cache` 控制磁盘缓存，详见[性能与索引生命周期](docs/performance.md)。
+
 包含：
 
 - **4 张 KPI 卡** — 总量 / 计费等效 / 美元估算 / 最近 1 小时速率

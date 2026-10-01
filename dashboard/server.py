@@ -13,6 +13,7 @@ import threading
 import time
 import webbrowser
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
@@ -20,6 +21,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(os.path.dirname(HERE), "scripts"))
 sys.path.insert(0, os.path.dirname(HERE))
 import token_stats as ts  # noqa: E402
+from transcript_index import TranscriptIndex, default_cache_dir  # noqa: E402
 import work_efficiency as we  # noqa: E402
 from analysis.features import time_series_features  # noqa: E402
 from analysis.seasonal import hour_of_day, day_of_week  # noqa: E402
@@ -31,14 +33,15 @@ DEFAULT_PORT = 8787
 PROJECTS_ROOT = ts.PROJECTS_DIR
 CODEX_ROOT = ts.CODEX_HOME
 
-# Whole-corpus records cache: one scan feeds every endpoint. Invalidated by a
-# signature over (path, mtime, size) of all JSONL files — so new activity reloads
-# automatically, but switching ranges never rescans disk.
+# Whole-corpus snapshots feed every endpoint. A file-index underneath reuses
+# unchanged parsing; only changed transcripts are reopened, and persisted
+# entries survive restarts. Cross-file accounting still runs in token_stats.
 _EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
 _FAR_FUTURE = datetime(9999, 1, 1, tzinfo=timezone.utc)
 
 _records_lock = threading.Lock()
 _records_cache: dict = {"signature": None, "records": []}
+_transcript_index = TranscriptIndex()
 # Separate lock so concurrent cold-cache callers don't all rescan in parallel
 # (thundering herd). With the GIL, parallel scan_records calls serialize anyway
 # but waste CPU repeating the same work — the page issues 3 fetches at once on
@@ -58,7 +61,7 @@ def _corpus_signature():
     for f in ts.list_transcript_files(PROJECTS_ROOT, codex_home=CODEX_ROOT):
         try:
             st = os.stat(f)
-            out.append((f, st.st_mtime_ns, st.st_size))
+            out.append((f, st.st_mtime_ns, st.st_size, st.st_dev, st.st_ino, st.st_ctime_ns))
         except OSError:
             continue
     out.sort()
@@ -85,7 +88,10 @@ def get_all_records():
             if (_records_cache["signature"] == sig or
                     _records_cache["records"] is not observed_records):
                 return _records_cache["records"]
-        records = ts.scan_records(_EPOCH, _FAR_FUTURE, PROJECTS_ROOT, codex_home=CODEX_ROOT)
+        paths = [entry[0] for entry in sig]
+        records = ts.scan_records(_EPOCH, _FAR_FUTURE, PROJECTS_ROOT, files=paths,
+                                  codex_home=CODEX_ROOT, file_cache=_transcript_index)
+        _transcript_index.prune(paths)
         with _records_lock:
             _records_cache["records"] = records
             _records_cache["signature"] = sig
@@ -649,6 +655,7 @@ RELOAD_WATCH_FILES = [
     os.path.abspath(__file__),
     os.path.join(os.path.dirname(HERE), "scripts", "token_stats.py"),
     os.path.join(os.path.dirname(HERE), "scripts", "codex_records.py"),
+    os.path.join(os.path.dirname(HERE), "scripts", "transcript_index.py"),
     os.path.join(os.path.dirname(HERE), "scripts", "work_efficiency.py"),
 ]
 
@@ -683,18 +690,23 @@ def _reload_watcher(poll_sec: float = 1.0):
 
 
 def main():
-    global PROJECTS_ROOT, CODEX_ROOT
+    global PROJECTS_ROOT, CODEX_ROOT, _transcript_index
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=DEFAULT_PORT)
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--no-open", action="store_true")
     ap.add_argument('--projects-dir', default=ts.PROJECTS_DIR)
     ap.add_argument('--codex-home', default=ts.CODEX_HOME)
+    ap.add_argument('--cache-dir', help='directory for disposable local statistics index')
+    ap.add_argument('--no-cache', action='store_true', help='use memory cache only')
     ap.add_argument("--no-reload", action="store_true",
                     help="disable auto-reload on Python source changes")
     args = ap.parse_args()
     PROJECTS_ROOT = os.path.expanduser(args.projects_dir)
     CODEX_ROOT = os.path.expanduser(args.codex_home)
+    cache_dir = (None if args.no_cache else Path(args.cache_dir).expanduser()
+                 if args.cache_dir else default_cache_dir(PROJECTS_ROOT, CODEX_ROOT))
+    _transcript_index = TranscriptIndex(cache_dir)
 
     srv = ThreadingHTTPServer((args.host, args.port), Handler)
     url = f"http://{args.host}:{args.port}/"
@@ -709,6 +721,10 @@ def main():
         srv.serve_forever()
     except KeyboardInterrupt:
         print("\nStopping.")
+    finally:
+        srv.server_close()
+        with _scan_lock:
+            _transcript_index.close()
 
 
 if __name__ == "__main__":
