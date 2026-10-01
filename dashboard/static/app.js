@@ -910,6 +910,7 @@ let cpChart;
 const patternsCacheMap = new Map();   // qs -> { data, fetchedAt }
 const PATTERNS_TTL_MS = 60_000;
 let lastPatternsQS = '';              // remember the most recent successful query string
+let patternsRequestId = 0;
 
 function patternsParamsFromUI() {
   const range = $('#patterns-range')?.value || '7d';
@@ -969,31 +970,33 @@ async function fetchPatterns(force = false, params = null) {
 }
 
 async function refreshPatterns(params = null) {
+  const requestId = ++patternsRequestId;
   const source = state.source;
   params = { ...(params || patternsParamsFromUI()), source };
   const panel = $('#patterns-panel');
   const applyBtn = $('#patterns-apply');
   panel?.classList.add('is-loading');
-  let prevApplyText = null;
   if (applyBtn) {
-    prevApplyText = applyBtn.textContent;
     applyBtn.disabled = true;
     applyBtn.textContent = '⏳ 分析中…';
   }
   try {
     const data = await fetchPatterns(true, params);
-    if (source !== state.source) return;
+    if (source !== state.source || requestId !== patternsRequestId) return;
     renderPatterns(data);
     const lbl = $('#patterns-summary-label');
     if (lbl && data?.params) lbl.textContent = patternsLabelFromParams(data.params);
   } catch (e) {
+    if (requestId !== patternsRequestId) return;
     console.warn('patterns load failed:', e);
     showPatternsError(e?.message || String(e));
   } finally {
-    panel?.classList.remove('is-loading');
-    if (applyBtn) {
-      applyBtn.disabled = false;
-      applyBtn.textContent = prevApplyText || '应用';
+    if (requestId === patternsRequestId) {
+      panel?.classList.remove('is-loading');
+      if (applyBtn) {
+        applyBtn.disabled = false;
+        applyBtn.textContent = '应用';
+      }
     }
   }
 }

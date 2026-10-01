@@ -8,6 +8,7 @@ from urllib.error import HTTPError
 from urllib.request import build_opener, ProxyHandler
 from http.server import ThreadingHTTPServer
 from datetime import datetime, timezone
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import test_codex_usage as fixture
@@ -85,6 +86,24 @@ class DashboardSourceTests(unittest.TestCase):
             'usage': {'input_tokens': 10, 'output_tokens': 2}}}], codex=False)
         self.assertEqual(sum(r['tokens'] for r in self.get('realtime', 'codex')['rows']), 120)
         self.assertEqual(sum(r['tokens'] for r in self.get('realtime', 'claude')['rows']), 12)
+
+    def test_dashboard_total_and_hour_rate_share_one_snapshot_while_logs_append(self):
+        stamp = datetime.now(timezone.utc).isoformat()
+        live = response('live-codex')
+        live['timestamp'] = stamp
+        self.write('sessions/live.jsonl', [meta(), context(), live])
+        read = server.source_records
+        def read_then_append(query):
+            result = read(query)
+            extra = response('arrives-after-snapshot', usage(50, 20, 5))
+            extra['timestamp'] = stamp
+            self.write('sessions/extra.jsonl', [meta(), context(), extra])
+            return result
+        # Only timing is controlled: all parsing, files and HTTP remain real.
+        with patch.object(server, 'source_records', side_effect=read_then_append):
+            data = self.get('dashboard', 'codex')
+        self.assertEqual(data['summary']['total'], 240)
+        self.assertEqual(data['summary']['rate_1h_tokens'], 120)
 
 
 if __name__ == '__main__':

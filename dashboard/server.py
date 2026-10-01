@@ -122,7 +122,7 @@ def _range_cache_key(q: dict):
     return key + (source_for(q), minute)
 
 
-def resolve_qs_range(q: dict):
+def resolve_qs_range(q: dict, corpus=None):
     """Parse from/to/range query params. Returns (start_local, end_local, label)."""
     if "range" in q:
         name = q["range"][0]
@@ -131,7 +131,7 @@ def resolve_qs_range(q: dict):
             # Clamp to the first day with any activity — otherwise by_day /
             # efficiency iterate dense days from 1970 (20k+ empty rows, and
             # active-vs-wall-clock percentages lose all meaning).
-            records = source_records(q)
+            records = corpus if corpus is not None else source_records(q)
             if records:
                 first = min(r.t_utc for r in records).astimezone(ts.local_tz())
                 start = first.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -151,25 +151,27 @@ def _filter_by_window(records, start_utc: datetime, end_utc: datetime):
     return [r for r in records if start_utc <= r.t_utc < end_utc]
 
 
-def records_for(q: dict):
-    start, end, label = resolve_qs_range(q)
+def records_for(q: dict, corpus=None):
+    corpus = source_records(q) if corpus is None else corpus
+    start, end, label = resolve_qs_range(q, corpus)
     start_utc = start.astimezone(timezone.utc)
     end_utc = end.astimezone(timezone.utc)
-    records = _filter_by_window(source_records(q), start_utc, end_utc)
+    records = _filter_by_window(corpus, start_utc, end_utc)
     return records, {"from": start.isoformat(), "to": end.isoformat(), "label": label}
 
 
 # --- handlers ---
 
 def h_summary(q):
-    records, rng = records_for(q)
+    corpus = source_records(q)
+    records, rng = records_for(q, corpus)
     totals = ts.aggregate_totals(records)
     usd = ts.usd_estimate(records)
 
     now_local = datetime.now(ts.local_tz())
     rt_start_utc = (now_local - timedelta(hours=1)).astimezone(timezone.utc)
     now_utc = now_local.astimezone(timezone.utc)
-    rt_records = _filter_by_window(source_records(q), rt_start_utc, now_utc)
+    rt_records = _filter_by_window(corpus, rt_start_utc, now_utc)
     rt_tokens = sum(r.total for r in rt_records)
 
     return {
@@ -246,10 +248,11 @@ def h_efficiency(q):
     Reuses the cached records corpus + the same range resolver as other endpoints
     (range=7d / range=this-week / from=…&to=…).
     """
-    start, end, label = resolve_qs_range(q)
+    corpus = source_records(q)
+    start, end, label = resolve_qs_range(q, corpus)
     start_utc = start.astimezone(timezone.utc)
     end_utc = end.astimezone(timezone.utc)
-    records = _filter_by_window(source_records(q), start_utc, end_utc)
+    records = _filter_by_window(corpus, start_utc, end_utc)
     result = we.compute_efficiency(records, start, end)
     result["range"]["label"] = label
     result['billing_supported'] = all(r.source == 'claude' for r in records) and source_for(q) != 'codex'
@@ -270,14 +273,15 @@ def h_dashboard(q):
         if hit is not None:
             return hit
 
-    records, rng = records_for(q)
+    corpus = source_records(q)
+    records, rng = records_for(q, corpus)
     totals = ts.aggregate_totals(records)
     usd = ts.usd_estimate(records)
 
     now_local = datetime.now(ts.local_tz())
     rt_start_utc = (now_local - timedelta(hours=1)).astimezone(timezone.utc)
     rt_records = _filter_by_window(
-        source_records(q),
+        corpus,
         rt_start_utc,
         now_local.astimezone(timezone.utc),
     )
@@ -402,8 +406,9 @@ def _compute_patterns(q):
         start_local = now_local - timedelta(days=days)
 
     # --- features / markov window (uses user-chosen bucket) ---
+    corpus = source_records(q)
     recs = _filter_by_window(
-        source_records(q),
+        corpus,
         start_local.astimezone(timezone.utc),
         end_local.astimezone(timezone.utc),
     )
@@ -441,7 +446,7 @@ def _compute_patterns(q):
     # --- changepoint: daily totals, dense, over cp_days_eff ending at end_local ---
     cp_start = end_local - timedelta(days=cp_days_eff)
     recs_cp = _filter_by_window(
-        source_records(q),
+        corpus,
         cp_start.astimezone(timezone.utc),
         end_local.astimezone(timezone.utc),
     )
