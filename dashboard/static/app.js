@@ -455,13 +455,33 @@ function formatRtTooltipTitle(iso) {
 }
 
 // ---- panel updaters (reuse chart instances) ----
-function updateSummary(s) {
-  $('#card-total').textContent   = fmt(s.total);
-  $('#card-billing').textContent = state.source === 'codex' ? '—' : fmt(s.billing_equiv);
-  $('#card-usd').textContent     = state.source === 'codex' ? '—' : '$' + (s.est_usd ?? 0).toFixed(2);
-  $('#card-rate').textContent    = fmtInt(s.rate_per_min);
-  $('#usage-note').textContent = '仅统计本机记录；Codex 缓存已包含在输入量中，推理已包含在输出量中。'
-    + (s.unpriced_tokens || state.source === 'codex' ? ' Codex 暂未配置计价，金额与折算卡只包含 Claude Code。' : ' 金额与折算按现有 Claude 计价配置估算。');
+function updateSummary(data) {
+  const s = data.summary;
+  const source = data.source;
+  const sourceLabel = source === 'all' ? '全部来源' : source === 'claude' ? 'Claude Code' : 'Codex';
+  const rangeLabels = {
+    today: '今天', yesterday: '昨天', 'this-week': '本周', 'this-month': '本月',
+    '7d': '近 7 天', '30d': '近 30 天', all: '全部历史', custom: '自定义日期',
+  };
+  $('#card-total').textContent = fmt(s.total);
+  $('#card-total').title = `${fmtInt(s.total)} tokens`;
+  $('#card-total-hint').textContent = `tokens · ${rangeLabels[state.range]} · ${sourceLabel}`;
+  for (const provider of ['claude', 'codex']) {
+    const included = source === 'all' || source === provider;
+    const total = data.by_source[provider].all;
+    const value = $(`#card-${provider}`);
+    value.textContent = included ? fmt(total) : '—';
+    value.title = included ? `${fmtInt(total)} tokens` : '未纳入当前筛选';
+    $(`#card-${provider}-hint`).textContent = !included ? '未纳入当前筛选'
+      : total === 0 ? '该时间段暂无记录'
+      : `tokens · 占当前总量 ${(total / s.total * 100).toFixed(1)}%`;
+  }
+  $('#card-rate').textContent = fmtInt(s.rate_per_min);
+  $('#card-rate-hint').textContent = `tokens / 分钟 · ${sourceLabel}`;
+  $('#card-usd-wrap').hidden = source === 'codex';
+  $('#card-billing').textContent = fmt(s.billing_equiv);
+  $('#card-billing').title = `${fmtInt(s.billing_equiv)} 计费等效 token`;
+  $('#card-usd').textContent = '$' + (s.est_usd ?? 0).toFixed(2);
 }
 
 function updateDaily(rows) {
@@ -857,8 +877,7 @@ async function refreshAll({ force = false } = {}) {
   // Guard against races: if the user switched range while this was in flight,
   // drop the result.
   if (key !== rangeKey()) return;
-  updateSummary(data.summary);
-  $('#source-totals').textContent = `Claude Code：${fmtInt(data.by_source.claude.all)} tokens　·　Codex：${fmtInt(data.by_source.codex.all)} tokens`;
+  updateSummary(data);
   updateDaily(data.by_day);
   updateModel(data.by_model);
   updateProject(data.by_project);

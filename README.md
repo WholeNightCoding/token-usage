@@ -106,7 +106,8 @@ The dashboard keeps a rebuildable local statistics index across restarts and rep
 
 What you get:
 
-- **4 KPI cards** — total / billing-equiv / USD estimate / last-1h rate
+- **4 overview cards** — total / Claude Code / Codex / last-1h rate, with the selected scope and each source's share. Excluded sources display “—” instead of zero.
+- **Claude cost reference** — expandable API cost and billing-equivalent estimates; excludes Codex and is not a subscription bill.
 - **Daily trend** — stacked bar chart by model, with totals labeled
 - **By model / Top 10 projects** — doughnut + bar
 - **Realtime** — last-Nh line chart, auto-refreshes every 10s, configurable bucket size (1 min → 4 hour)

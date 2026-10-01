@@ -109,7 +109,8 @@ python3 ~/.claude/skills/token-usage/dashboard/server.py
 
 包含：
 
-- **4 张 KPI 卡** — 总量 / 计费等效 / 美元估算 / 最近 1 小时速率
+- **4 张概览卡** — 总用量 / Claude Code / Codex / 最近一小时速率，标明筛选范围和来源占比；未纳入筛选的来源显示“—”，不误显示为零。
+- **Claude 费用参考** — 展开查看 API 金额和计费等效 token 的估算，不含 Codex，也不是订阅账单。
 - **Daily trend** — 按 model 堆叠的柱状图，柱顶标总计
 - **By model / Top 10 projects** — 甜甜圈 + 柱状
 - **Realtime** — 最近 N 小时折线图，每 10 秒自动刷新，桶大小可选（1 min → 4 hour）
